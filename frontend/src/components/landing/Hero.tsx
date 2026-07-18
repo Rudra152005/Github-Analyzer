@@ -257,7 +257,7 @@ export default function Hero() {
           >
             <div className="bg-light-surface dark:bg-dark-card border border-light-border dark:border-dark-border rounded-card shadow-soft overflow-hidden">
               <img
-                src="https://images.unsplash.com/photo-1551288049-bebda4e38c71?w=1200&h=600&fit=crop"
+                src="/dashboard-preview.png"
                 alt="Dashboard Preview"
                 className="w-full h-64 md:h-96 object-cover opacity-80"
               />
