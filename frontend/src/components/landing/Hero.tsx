@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Button, Input, Select } from '../ui';
 import { api } from '../../lib/api';
+import { DashboardMock } from './DashboardMock';
 
 const jobRoles: { value: string; label: string }[] = [
   { value: 'Frontend Developer', label: 'Frontend Developer' },
@@ -297,12 +298,8 @@ export default function Hero() {
             transition={{ delay: 0.7 }}
             className="mt-24 max-w-5xl mx-auto"
           >
-            <div className="bg-light-surface dark:bg-dark-card border border-light-border dark:border-dark-border rounded-card shadow-soft overflow-hidden">
-              <img
-                src="/dashboard-preview.png"
-                alt="Dashboard Preview"
-                className="w-full h-64 md:h-96 object-cover opacity-80"
-              />
+            <div className="relative bg-light-surface dark:bg-dark-card border border-light-border dark:border-dark-border rounded-card shadow-soft overflow-hidden h-96">
+              <DashboardMock />
             </div>
           </motion.div>
         </div>
