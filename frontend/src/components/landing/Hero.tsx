@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   Github, ArrowRight, Sparkles, TrendingUp, Target,
-  Twitter, Linkedin, MessageCircle, Mail, ExternalLink,
+  Linkedin, MessageCircle, Mail, ExternalLink,
   BarChart2, BookOpen, Users, Shield, Zap, Heart,
 } from 'lucide-react';
 import { Button, Input, Select } from '../ui';
@@ -63,9 +63,15 @@ const footerLinks = {
   ],
 };
 
+const XIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="currentColor">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+);
+
 const socialLinks = [
   { icon: Github, label: 'GitHub', href: 'https://github.com', color: 'hover:text-white' },
-  { icon: Twitter, label: 'Twitter', href: 'https://twitter.com', color: 'hover:text-sky-400' },
+  { icon: XIcon, label: 'X (Twitter)', href: 'https://x.com', color: 'hover:text-gray-900 dark:hover:text-white' },
   { icon: Linkedin, label: 'LinkedIn', href: 'https://linkedin.com', color: 'hover:text-blue-400' },
   { icon: MessageCircle, label: 'Discord', href: '#', color: 'hover:text-indigo-400' },
   { icon: Mail, label: 'Email', href: 'mailto:hello@devpulse.dev', color: 'hover:text-accent-primary' },
