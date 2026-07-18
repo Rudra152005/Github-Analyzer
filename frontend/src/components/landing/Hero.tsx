@@ -185,11 +185,13 @@ export default function Hero() {
           </div>
 
           <div className="flex items-center gap-4">
-            <Button variant="ghost" className="text-text-secondary dark:text-text-dark-secondary hover:text-accent-primary" onClick={devLogin}>
-              Dev Bypass Login
-            </Button>
+            {import.meta.env.DEV && (
+              <Button variant="ghost" className="text-text-secondary dark:text-text-dark-secondary hover:text-accent-primary" onClick={devLogin}>
+                Dev Bypass Login
+              </Button>
+            )}
             <Button variant="outline" className="border-accent-primary text-accent-primary" onClick={login}>
-              Sign In
+              Login with GitHub
             </Button>
           </div>
         </nav>
