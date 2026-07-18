@@ -47,6 +47,15 @@ export const api = {
     getLinkedInLoginUrl: () => `${API_BASE}/auth/linkedin`,
   },
 
+  // Public
+  public: {
+    getStats: () => apiFetch<{ developers: number; reposAnalyzed: number; satisfaction: number }>('/public/stats'),
+    subscribe: (email: string) => apiFetch<{ message: string }>('/public/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  },
+
   // User & Stats
   user: {
     getProfile: () => apiFetch<UserProfile>('/user/me'),

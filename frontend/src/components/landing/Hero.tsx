@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
@@ -8,6 +8,7 @@ import {
   BarChart2, BookOpen, Users, Shield, Zap, Heart,
 } from 'lucide-react';
 import { Button, Input, Select } from '../ui';
+import { api } from '../../lib/api';
 
 const jobRoles: { value: string; label: string }[] = [
   { value: 'Frontend Developer', label: 'Frontend Developer' },
@@ -70,9 +71,9 @@ const socialLinks = [
   { icon: Mail, label: 'Email', href: 'mailto:hello@devpulse.dev', color: 'hover:text-accent-primary' },
 ];
 
-const stats = [
-  { value: '50K+', label: 'Developers' },
-  { value: '2M+', label: 'Repos Analyzed' },
+const defaultStats = [
+  { value: '...', label: 'Developers' },
+  { value: '...', label: 'Repos Analyzed' },
   { value: '98%', label: 'Satisfaction' },
   { value: '4.9★', label: 'Rating' },
 ];
@@ -86,6 +87,23 @@ export default function Hero() {
   const { login, devLogin } = useAuth();
 
 
+  const [stats, setStats] = useState(defaultStats);
+  const [subscribeStatus, setSubscribeStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [subscribeMessage, setSubscribeMessage] = useState('');
+
+  useEffect(() => {
+    api.public.getStats()
+      .then((data) => {
+        setStats([
+          { value: `${(data.developers / 1000).toFixed(1)}K+`, label: 'Developers' },
+          { value: `${(data.reposAnalyzed / 1000).toFixed(1)}K+`, label: 'Repos Analyzed' },
+          { value: `${data.satisfaction}%`, label: 'Satisfaction' },
+          { value: '4.9★', label: 'Rating' },
+        ]);
+      })
+      .catch((err) => console.error('Failed to load global stats:', err));
+  }, []);
+
   const handleAnalyze = () => {
     if (username.trim()) {
       if (username.trim().toLowerCase() === 'alexjohnson') {
@@ -93,6 +111,24 @@ export default function Hero() {
       } else {
         login();
       }
+    }
+  };
+
+  const handleSubscribe = async () => {
+    if (!newsletterEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newsletterEmail)) {
+      setSubscribeStatus('error');
+      setSubscribeMessage('Please enter a valid email.');
+      return;
+    }
+    try {
+      setSubscribeStatus('loading');
+      const res = await api.public.subscribe(newsletterEmail);
+      setSubscribeStatus('success');
+      setSubscribeMessage(res.message);
+      setNewsletterEmail('');
+    } catch (err: any) {
+      setSubscribeStatus('error');
+      setSubscribeMessage(err.message || 'Failed to subscribe.');
     }
   };
 
@@ -321,15 +357,26 @@ export default function Hero() {
                 </div>
               </div>
               <div className="flex gap-2 w-full md:w-auto min-w-0 md:min-w-[400px]">
-                <input
-                  type="email"
-                  placeholder="you@example.com"
-                  value={newsletterEmail}
-                  onChange={(e) => setNewsletterEmail(e.target.value)}
-                  className="flex-1 h-11 px-4 rounded-xl bg-light-surface dark:bg-dark-bg border border-light-border dark:border-dark-border text-text-primary dark:text-white placeholder-text-muted dark:placeholder-text-dark-muted text-sm focus:outline-none focus:border-accent-primary transition-colors"
-                />
-                <button className="h-11 px-5 rounded-xl bg-accent-primary hover:bg-accent-primary-hover text-dark-bg font-semibold text-sm transition-all duration-200 whitespace-nowrap hover:shadow-[0_0_20px_rgba(88,196,107,0.4)] active:scale-95">
-                  Subscribe
+                <div className="flex flex-col flex-1 relative">
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={newsletterEmail}
+                    onChange={(e) => { setNewsletterEmail(e.target.value); setSubscribeStatus('idle'); }}
+                    className="w-full h-11 px-4 rounded-xl bg-light-surface dark:bg-dark-bg border border-light-border dark:border-dark-border text-text-primary dark:text-white placeholder-text-muted dark:placeholder-text-dark-muted text-sm focus:outline-none focus:border-accent-primary transition-colors"
+                  />
+                  {subscribeMessage && (
+                    <span className={`absolute -bottom-6 left-1 text-xs ${subscribeStatus === 'success' ? 'text-accent-primary' : 'text-red-500'}`}>
+                      {subscribeMessage}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={handleSubscribe}
+                  disabled={subscribeStatus === 'loading'}
+                  className="h-11 px-5 rounded-xl bg-accent-primary hover:bg-accent-primary-hover text-dark-bg font-semibold text-sm transition-all duration-200 whitespace-nowrap hover:shadow-[0_0_20px_rgba(88,196,107,0.4)] active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {subscribeStatus === 'loading' ? 'Subscribing...' : 'Subscribe'}
                 </button>
               </div>
             </div>

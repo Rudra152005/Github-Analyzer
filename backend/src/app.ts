@@ -16,6 +16,7 @@ import exploreRoutes from './routes/explore.routes';
 import leaderboardRoutes, { usersRouter } from './routes/leaderboard.routes';
 import reportsRoutes from './routes/reports.routes';
 import compareRoutes, { githubRouter } from './routes/compare.routes';
+import publicRoutes from './routes/public.routes';
 
 export function createApp() {
   const app = express();
@@ -68,6 +69,7 @@ export function createApp() {
   app.use('/api/reports', reportsRoutes);
   app.use('/api/compare', compareRoutes);
   app.use('/api/github', githubRouter);
+  app.use('/api/public', publicRoutes);
 
   // ─── Health Check ──────────────────────────────────────────────────────────
   app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
