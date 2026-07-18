@@ -7,6 +7,7 @@ const schema = z.object({
   MONGO_URI: z.string().min(1),
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.coerce.number().default(6379),
+  REDIS_PASSWORD: z.string().optional(),
   SESSION_SECRET: z.string().min(16),
   ENCRYPTION_KEY: z.string().length(64),
   GITHUB_CLIENT_ID: z.string().min(1),

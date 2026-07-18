@@ -5,6 +5,8 @@ import { logger } from '../utils/logger';
 export const redis = new Redis({
   host: env.REDIS_HOST,
   port: env.REDIS_PORT,
+  password: env.REDIS_PASSWORD,
+  tls: env.REDIS_HOST.includes('upstash.io') ? {} : undefined,
   maxRetriesPerRequest: null, // required by BullMQ
   enableReadyCheck: false,
   lazyConnect: true,
