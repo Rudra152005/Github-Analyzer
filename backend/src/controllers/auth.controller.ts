@@ -148,7 +148,11 @@ export async function loginWithUsername(req: Request, res: Response): Promise<vo
 
     req.session.userId = String(user._id);
     req.session.githubUsername = user.username;
-    res.json({ message: 'Logged in successfully' });
+    
+    req.session.save((err) => {
+      if (err) logger.error('Session save error:', err);
+      res.json(toUserProfile(user));
+    });
   } catch (err: any) {
     if (err instanceof AppError) throw err;
     throw new AppError('Failed to fetch user data: ' + err.message, 500);

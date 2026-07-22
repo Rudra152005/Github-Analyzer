@@ -111,14 +111,19 @@ export default function Hero() {
       .catch((err) => console.error('Failed to load global stats:', err));
   }, []);
 
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
   const handleAnalyze = async () => {
-    if (username.trim()) {
-      try {
-        await login(username.trim());
-      } catch (err: any) {
-        const errorMsg = err.response?.data?.message || err.message || 'GitHub username not found. Please verify the handle on GitHub.';
-        alert(errorMsg);
-      }
+    if (!username.trim() || isAnalyzing) return;
+    setIsAnalyzing(true);
+    try {
+      await login(username.trim());
+      navigate('/dashboard');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || 'GitHub username not found. Please verify the handle on GitHub.';
+      alert(errorMsg);
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -249,7 +254,8 @@ export default function Hero() {
                     size="lg"
                     className="h-12 px-8"
                     onClick={handleAnalyze}
-                    disabled={!username.trim()}
+                    isLoading={isAnalyzing}
+                    disabled={!username.trim() || isAnalyzing}
                   >
                     Analyze
                     <ArrowRight className="w-4 h-4 ml-2" />

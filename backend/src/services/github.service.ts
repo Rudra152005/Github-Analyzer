@@ -299,7 +299,7 @@ export async function fetchGitHubProfile(token: string, username: string) {
 
     if (!token) {
       try {
-        const streakRes = await axios.get(`https://github-readme-streak-stats.herokuapp.com/?user=${cleanUsername}`);
+        const streakRes = await axios.get(`https://github-readme-streak-stats.herokuapp.com/?user=${cleanUsername}`, { timeout: 2500 });
         const textNodes = streakRes.data.match(/<text.*?>([\s\S]*?)<\/text>/g)?.map((t: string) => t.replace(/<[^>]+>/g, '').trim()) || [];
         
         const totalIdx = textNodes.findIndex(t => t.toLowerCase().includes('total contributions'));
@@ -753,7 +753,7 @@ export async function fetchPublicProfile(username: string) {
       let streak = 0;
       
       try {
-        const streakRes = await axios.get(`https://github-readme-streak-stats.herokuapp.com/?user=${username}`);
+        const streakRes = await axios.get(`https://github-readme-streak-stats.herokuapp.com/?user=${username}`, { timeout: 2500 });
         const textNodes = streakRes.data.match(/<text.*?>([\s\S]*?)<\/text>/g)?.map((t: string) => t.replace(/<[^>]+>/g, '').trim()) || [];
         
         const totalIdx = textNodes.findIndex(t => t.toLowerCase().includes('total contributions'));

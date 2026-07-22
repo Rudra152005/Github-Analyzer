@@ -50,7 +50,7 @@ export const api = {
   auth: {
     getMe: () => apiFetch<UserProfile>('/auth/me'),
     logout: () => apiFetch<{ message: string }>('/auth/logout', { method: 'POST' }),
-    usernameLogin: (username: string) => apiFetch<{ message: string }>('/auth/username-login', { method: 'POST', body: JSON.stringify({ username }) }),
+    usernameLogin: (username: string) => apiFetch<UserProfile>('/auth/username-login', { method: 'POST', body: JSON.stringify({ username }) }),
     getGitHubLoginUrl: () => `${API_BASE}/auth/github`,
     getLinkedInLoginUrl: () => `${API_BASE}/auth/linkedin`,
   },

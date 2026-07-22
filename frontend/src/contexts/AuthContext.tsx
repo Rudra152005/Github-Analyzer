@@ -34,9 +34,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (username: string) => {
     setLoading(true);
     try {
-      await api.auth.usernameLogin(username);
-      await refreshUser();
-      window.location.href = '/dashboard';
+      const profile = await api.auth.usernameLogin(username);
+      setUser(profile);
+      setLoading(false);
     } catch (err) {
       console.error('Login failed:', err);
       setLoading(false);
