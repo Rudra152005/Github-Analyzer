@@ -382,53 +382,6 @@ const SAMPLE_TOPICS: TopicItem[] = [
   { id: 't12', name: 'Docker', category: 'DevOps', repoCount: '135.9k', growth: '+12.1%', iconName: 'Tag', description: 'Containerization, Dockerfiles, Compose multi-container setups.', color: 'from-blue-500/20 to-cyan-500/20' },
 ];
 
-const SAMPLE_DEVELOPERS: DeveloperItem[] = [
-  {
-    id: 'd1',
-    name: 'Shadcn',
-    username: 'shadcn',
-    avatar: 'https://avatars.githubusercontent.com/u/124599?v=4',
-    followers: 48200,
-    publicRepos: 34,
-    totalStars: 98400,
-    topRepo: 'shadcn/ui',
-    heatScore: 99,
-  },
-  {
-    id: 'd2',
-    name: 'Guillermo Rauch',
-    username: 'rauchg',
-    avatar: 'https://avatars.githubusercontent.com/u/13041?v=4',
-    followers: 78900,
-    publicRepos: 112,
-    totalStars: 145000,
-    topRepo: 'vercel/next.js',
-    heatScore: 97,
-  },
-  {
-    id: 'd3',
-    name: 'Sora Morimoto',
-    username: 'soramori',
-    avatar: 'https://avatars.githubusercontent.com/u/2070390?v=4',
-    followers: 12400,
-    publicRepos: 89,
-    totalStars: 24500,
-    topRepo: 'biomejs/biome',
-    heatScore: 94,
-  },
-  {
-    id: 'd4',
-    name: 'Rudra Tiwari',
-    username: 'tiwar95562',
-    avatar: 'https://github.com/Rudra152005.png',
-    followers: 892,
-    publicRepos: 42,
-    totalStars: 1540,
-    topRepo: 'Rudra152005/Github-Analyzer',
-    heatScore: 96,
-  },
-];
-
 const SAMPLE_HIDDEN_GEMS: HiddenGemItem[] = [
   {
     id: 'hg1',
@@ -600,10 +553,9 @@ export default function ExplorePage() {
     };
   }, [search, activeTab]);
 
-  // Combined Developers (Real API data prioritized over sample data)
+  // Real Developers from API exclusively
   const displayedDevelopers = useMemo(() => {
-    if (realDevelopers.length > 0) return realDevelopers;
-    return SAMPLE_DEVELOPERS;
+    return realDevelopers;
   }, [realDevelopers]);
 
   // Combined Repos (Real API data prioritized)
@@ -859,7 +811,7 @@ export default function ExplorePage() {
             { id: 'trending', label: 'Trending', icon: TrendingUp, count: filteredTrendingRepos.length },
             { id: 'ai-picks', label: 'AI Picks', icon: Sparkles, count: SAMPLE_AI_PICKS.length },
             { id: 'topics', label: 'Topics', icon: Tag, count: SAMPLE_TOPICS.length },
-            { id: 'developers', label: 'Developers', icon: Users, count: SAMPLE_DEVELOPERS.length },
+            { id: 'developers', label: 'Developers', icon: Users, count: displayedDevelopers.length },
             { id: 'hidden-gems', label: 'Hidden Gems', icon: Award, count: SAMPLE_HIDDEN_GEMS.length },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -1155,6 +1107,12 @@ export default function ExplorePage() {
                   <div className="flex items-center justify-center py-12">
                     <div className="w-8 h-8 border-4 border-accent-primary border-t-transparent rounded-full animate-spin" />
                   </div>
+                ) : displayedDevelopers.length === 0 ? (
+                  <Card padding="lg" className="text-center py-12">
+                    <AlertCircle className="w-10 h-10 text-accent-warning mx-auto mb-3" />
+                    <h3 className="text-base font-semibold text-text-primary dark:text-white">No registered developers found</h3>
+                    <p className="text-xs text-text-muted dark:text-text-dark-muted mt-1">Try searching for a developer username above.</p>
+                  </Card>
                 ) : (
                   displayedDevelopers.map((dev, idx) => {
                     const isFollowing = followingMap[dev.username] ?? dev.isFollowing;

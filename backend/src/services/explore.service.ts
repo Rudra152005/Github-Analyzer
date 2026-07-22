@@ -158,31 +158,29 @@ export async function searchExplore(query: string, type: string, userId?: string
   return result;
 }
 
-export async function getTopUsers(limit = 10, userId?: string) {
-  const cacheKey = `explore:topusers:${limit}`;
+export async function getTopUsers(limit = 10, _userId?: string) {
+  const cacheKey = `explore:topusers:real:${limit}`;
   const cached = await cacheGet<any[]>(cacheKey);
   if (cached) return cached;
 
-  // Query all registered users on the website
-  const seededUsernames = ['sarahcodes', 'devmaster', 'codewizard', 'alexjohnson'];
-  const dbUsers = await User.find({ username: { $nin: seededUsernames }, 'privacy.publicProfile': true })
-    .sort({ leaderboardScore: -1 })
+  // Query all real registered users on the platform
+  const dbUsers = await User.find({ 'privacy.publicProfile': { $ne: false } })
+    .sort({ leaderboardScore: -1, contributions: -1, followers: -1 })
     .limit(limit)
     .lean();
 
-  const usersToMap = dbUsers.length > 0 ? dbUsers : await User.find({ 'privacy.publicProfile': true }).sort({ leaderboardScore: -1 }).limit(limit).lean();
-
-  const entries = usersToMap.map((u, i) => ({
+  const entries = dbUsers.map((u, i) => ({
     rank: i + 1,
     username: u.username,
-    avatar: u.avatar,
+    name: u.name || u.username,
+    avatar: u.avatar || `https://github.com/${u.username}.png`,
     score: u.leaderboardScore || 5,
-    repositories: u.publicRepos,
-    contributions: u.contributions,
-    streak: u.streak,
-    followers: u.followers,
+    repositories: u.publicRepos || 0,
+    contributions: u.contributions || 0,
+    streak: u.streak || 0,
+    followers: u.followers || 0,
   }));
 
-  await cacheSet(cacheKey, entries, 300);
+  await cacheSet(cacheKey, entries, 120);
   return entries;
 }
