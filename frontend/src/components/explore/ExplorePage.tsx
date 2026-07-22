@@ -6,24 +6,15 @@ import {
   TrendingUp,
   Star,
   Users,
-  GitBranch,
   Flame,
   Sparkles,
   Filter,
-  Code2,
-  BookOpen,
-  CheckCircle2,
-  ExternalLink,
-  Layers,
-  Shield,
-  Zap,
   Tag,
   Clock,
   ArrowUpRight,
   GitFork,
   AlertCircle,
   X,
-  SlidersHorizontal,
   Activity,
   Award,
   ChevronRight,
@@ -1005,7 +996,7 @@ export default function ExplorePage() {
                 exit={{ opacity: 0, y: -15 }}
                 className="grid sm:grid-cols-2 gap-4"
               >
-                {SAMPLE_TOPICS.map((topic, idx) => (
+                {SAMPLE_TOPICS.map((topic) => (
                   <motion.div
                     key={topic.id}
                     whileHover={{ scale: 1.02 }}
