@@ -1,6 +1,4 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { GitBranch, Star, GitFork, Users, Flame, Calendar, TrendingUp } from 'lucide-react';
+import { GitBranch, Star, GitFork, Users, Flame } from 'lucide-react';
 
 export function DashboardMock() {
   const stats = [
@@ -109,7 +107,7 @@ export function DashboardMock() {
           </div>
         </div>
       </div>
-      
+
       {/* Fade out bottom gradient */}
       <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-light-surface dark:from-dark-card to-transparent" />
     </div>

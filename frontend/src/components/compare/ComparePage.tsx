@@ -115,6 +115,23 @@ export default function ComparePage() {
             exit={{ opacity: 0, y: -20 }}
             className="space-y-6"
           >
+            {/* Winner Banner */}
+            <div className="p-4 rounded-xl bg-gradient-to-r from-accent-primary/10 via-accent-primary/5 to-transparent border border-accent-primary/20 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-lg bg-accent-primary/20 text-accent-primary">
+                  <Trophy className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-text-primary dark:text-white">
+                    {result.winner === 'tie' ? "It's a Tie!" : `Overall Winner: ${getWinnerName()}`}
+                  </h2>
+                  <p className="text-xs text-text-secondary dark:text-text-dark-secondary">
+                    Based on overall contributions, streak, repositories, and AI evaluation
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Profile Cards */}
             <div className="grid md:grid-cols-2 gap-6">
               {/* User 1 */}

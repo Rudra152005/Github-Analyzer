@@ -21,11 +21,33 @@ import publicRoutes from './routes/public.routes';
 export function createApp() {
   const app = express();
 
-  // ─── Security ──────────────────────────────────────────────────────────────
+  // ─── Trust Proxy (Required for HTTPS cookies on Render/Vercel/Railway) ────
+  app.set('trust proxy', 1);
+
+  // ─── Security & CORS ───────────────────────────────────────────────────────
   app.use(helmet());
+
+  const allowedOrigins = env.FRONTEND_URL.split(',').map((url) => url.trim().replace(/\/$/, ''));
+
   app.use(
     cors({
-      origin: env.FRONTEND_URL,
+      origin: (origin, callback) => {
+        // Allow non-browser requests or same-origin requests without an Origin header
+        if (!origin) return callback(null, true);
+
+        const cleanOrigin = origin.replace(/\/$/, '');
+
+        // Allow allowedOrigins or any *.vercel.app domain / localhost in development
+        if (
+          allowedOrigins.includes(cleanOrigin) ||
+          cleanOrigin.endsWith('.vercel.app') ||
+          env.NODE_ENV !== 'production'
+        ) {
+          return callback(null, true);
+        }
+
+        return callback(new Error(`CORS policy does not allow access from origin: ${origin}`));
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],

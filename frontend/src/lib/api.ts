@@ -10,18 +10,26 @@ import {
   CareerAnalysis,
 } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
 
 async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    credentials: 'include',
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      credentials: 'include',
+    });
+  } catch (err: any) {
+    if (url.includes('localhost')) {
+      throw new Error('Unable to connect to backend server. Please configure VITE_API_URL in your Vercel Environment Variables.');
+    }
+    throw new Error(`Network Error: Could not connect to API at ${API_BASE}. Please check CORS and server status.`);
+  }
 
   if (!response.ok) {
     let errorMsg = 'An error occurred';
