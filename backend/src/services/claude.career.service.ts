@@ -38,6 +38,10 @@ export interface CareerAnalysisResult {
     estimatedTime: string;
     priority: 'high' | 'medium' | 'low';
   }[];
+  projectComplexityScore?: number;
+  marketRelevanceScore?: number;
+  analyzedReposCount?: number;
+  detectedTechStack?: string[];
 }
 
 // ─── In-memory cache ──────────────────────────────────────────────────────────
@@ -284,19 +288,40 @@ function buildRichFallback(
   repos: EnrichedRepo[]
 ): CareerAnalysisResult {
   const def = ROLE_DEFINITIONS[targetRole] ?? ROLE_DEFINITIONS['Full Stack Developer'];
-  const allLangs = [...new Set(repos.flatMap((r) => r.languages).concat(repos.map((r) => r.language)))];
-  const allLangsLower = allLangs.map((l) => l.toLowerCase());
+  const detectedSkills = new Set<string>();
+  repos.forEach((r) => {
+    (r.languages || []).forEach((l) => detectedSkills.add(l.toLowerCase()));
+    if (r.language) detectedSkills.add(r.language.toLowerCase());
+    const text = `${r.name} ${r.description}`.toLowerCase();
+    const commonKeywords = [
+      'react', 'next', 'vue', 'angular', 'svelte', 'node', 'express', 'nest',
+      'python', 'django', 'flask', 'fastapi', 'docker', 'kubernetes', 'k8s',
+      'postgres', 'postgresql', 'mongo', 'mongodb', 'redis', 'graphql', 'rest',
+      'api', 'typescript', 'javascript', 'aws', 'gcp', 'azure', 'tailwind',
+      'css', 'html', 'git', 'redux', 'zod', 'prisma'
+    ];
+    for (const kw of commonKeywords) {
+      if (text.includes(kw)) detectedSkills.add(kw);
+    }
+  });
 
-  // Score each core skill
-  const matchedCore = def.coreSkills.filter((s) =>
-    allLangsLower.some((l) => l.includes(s.toLowerCase()))
-  );
-  const matchedNice = def.niceToHave.filter((s) =>
-    allLangsLower.some((l) => l.includes(s.toLowerCase()))
-  );
-  const missingCore = def.coreSkills.filter((s) =>
-    !allLangsLower.some((l) => l.includes(s.toLowerCase()))
-  );
+  const allSkillsArr = Array.from(detectedSkills);
+
+  // Score each core skill accurately against detected keywords
+  const matchedCore = def.coreSkills.filter((s) => {
+    const sLower = s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return allSkillsArr.some((skill) => skill.replace(/[^a-z0-9]/g, '').includes(sLower) || sLower.includes(skill.replace(/[^a-z0-9]/g, '')));
+  });
+
+  const matchedNice = def.niceToHave.filter((s) => {
+    const sLower = s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return allSkillsArr.some((skill) => skill.replace(/[^a-z0-9]/g, '').includes(sLower) || sLower.includes(skill.replace(/[^a-z0-9]/g, '')));
+  });
+
+  const missingCore = def.coreSkills.filter((s) => {
+    const sLower = s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return !allSkillsArr.some((skill) => skill.replace(/[^a-z0-9]/g, '').includes(sLower) || sLower.includes(skill.replace(/[^a-z0-9]/g, '')));
+  });
 
   const repoCount = repos.length;
   const coreRatio = def.coreSkills.length > 0 ? matchedCore.length / def.coreSkills.length : 0;
@@ -356,6 +381,7 @@ function buildRichFallback(
   ];
 
   // Learning roadmap from missing skills
+  const allLangsLower = repos.map((r) => r.language.toLowerCase());
   const roadmapSkills = [
     ...missingCore.slice(0, 2).map((s, i) => ({ skill: s, priority: (i === 0 ? 'high' : 'medium') as 'high' | 'medium' | 'low' })),
     ...def.niceToHave.filter((s) => !allLangsLower.includes(s.toLowerCase())).slice(0, 2).map((s) => ({ skill: s, priority: 'low' as const })),
@@ -368,6 +394,15 @@ function buildRichFallback(
     estimatedTime: priority === 'high' ? '4-6 weeks' : priority === 'medium' ? '2-4 weeks' : '1-2 weeks',
     priority,
   }));
+
+  const avgComplexity = repoCount > 0
+    ? Math.round(repos.reduce((acc, r) => {
+        const rComplexity = 50 + Math.min(30, (r.description?.length || 0) / 5) + Math.min(15, r.stars * 2);
+        return acc + rComplexity;
+      }, 0) / repoCount)
+    : 70;
+
+  const marketRelevance = Math.round(Math.min(95, Math.max(50, coreRatio * 50 + niceRatio * 25 + (repoCount > 0 ? 20 : 0))));
 
   return {
     role: targetRole,
@@ -382,6 +417,10 @@ function buildRichFallback(
     portfolioSuggestions,
     roleMatch,
     learningRoadmap,
+    projectComplexityScore: avgComplexity,
+    marketRelevanceScore: marketRelevance,
+    analyzedReposCount: repoCount,
+    detectedTechStack: allSkillsArr.slice(0, 10),
   };
 }
 
@@ -437,7 +476,7 @@ export async function analyzeCareerForUser(
   targetRole: string,
   githubToken?: string
 ): Promise<CareerAnalysisResult> {
-  const cacheKey = `${username}:${targetRole}`;
+  const cacheKey = `${username}:${targetRole}:v3`;
   const cached = getCached(cacheKey);
   if (cached) { logger.info(`Career cache HIT: ${cacheKey}`); return cached; }
 

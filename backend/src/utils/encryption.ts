@@ -13,11 +13,17 @@ export function encrypt(text: string): string {
 }
 
 export function decrypt(payload: string): string {
+  if (!payload) return '';
   const [ivHex, tagHex, encryptedHex] = payload.split(':');
-  const iv = Buffer.from(ivHex, 'hex');
-  const tag = Buffer.from(tagHex, 'hex');
-  const encrypted = Buffer.from(encryptedHex, 'hex');
-  const decipher = crypto.createDecipheriv(ALGORITHM, KEY as any, iv as any);
-  decipher.setAuthTag(tag);
-  return decipher.update(encrypted).toString('utf8') + decipher.final('utf8');
+  if (!ivHex || !tagHex || !encryptedHex) return '';
+  try {
+    const iv = Buffer.from(ivHex, 'hex');
+    const tag = Buffer.from(tagHex, 'hex');
+    const encrypted = Buffer.from(encryptedHex, 'hex');
+    const decipher = crypto.createDecipheriv(ALGORITHM, KEY as any, iv as any);
+    decipher.setAuthTag(tag);
+    return decipher.update(encrypted).toString('utf8') + decipher.final('utf8');
+  } catch (err) {
+    return '';
+  }
 }

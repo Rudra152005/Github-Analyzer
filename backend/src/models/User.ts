@@ -13,11 +13,12 @@ export interface IUser extends Document {
   followers: number;
   following: number;
   publicRepos: number;
+  starred: number;
   createdAt: Date;
   contributions: number;
   streak: number;
   // Stored encrypted
-  githubAccessToken: string;
+  githubAccessToken?: string;
   // Settings
   notifications: {
     emailNotifications: boolean;
@@ -55,9 +56,10 @@ const UserSchema = new Schema<IUser>(
     followers: { type: Number, default: 0 },
     following: { type: Number, default: 0 },
     publicRepos: { type: Number, default: 0 },
+    starred: { type: Number, default: 0 },
     contributions: { type: Number, default: 0 },
     streak: { type: Number, default: 0 },
-    githubAccessToken: { type: String, required: true },
+    githubAccessToken: { type: String, required: false },
     notifications: {
       emailNotifications: { type: Boolean, default: true },
       weeklyReports: { type: Boolean, default: true },

@@ -17,6 +17,7 @@ export function toUserProfile(user: IUser | Record<string, any>) {
     followers: user.followers,
     following: user.following,
     publicRepos: user.publicRepos,
+    starred: user.starred ?? 0,
     createdAt: user.createdAt?.toISOString?.() ?? '',
     contributions: user.contributions,
     streak: user.streak,
@@ -28,6 +29,7 @@ export function toRepository(repo: IRepository | Record<string, any>) {
   const branches = repo.branches ?? 1;
   const issues = repo.issues ?? 0;
   const stars = repo.stars ?? 0;
+  const forks = repo.forks ?? 0;
 
   // 1. Calculate Code Complexity Score (0-100) dynamically & stably
   const name = repo.name ?? '';
@@ -43,8 +45,8 @@ export function toRepository(repo: IRepository | Record<string, any>) {
     Java: 28,
   };
   const langBase = langComplexity[repo.language] ?? 15;
-  const popularityWeight = Math.min(20, Math.round(Math.log10(stars + (repo.forks ?? 0) + 1) * 6));
-  const issuesWeight = Math.min(15, (repo.issues ?? 0) * 3);
+  const popularityWeight = Math.min(20, Math.round(Math.log10(stars + forks + 1) * 6));
+  const issuesWeight = Math.min(15, issues * 3);
   const descLength = repo.description?.length ?? 0;
   const descWeight = Math.min(10, Math.round(descLength / 8));
 
@@ -107,17 +109,17 @@ export function toRepository(repo: IRepository | Record<string, any>) {
     fullName: repo.fullName,
     description: repo.description,
     language: repo.language,
-    stars: repo.stars,
-    forks: repo.forks,
-    issues: repo.issues,
+    stars,
+    forks,
+    issues,
     healthScore: repo.healthScore,
     lastUpdated: repo.lastUpdated,
     isPrivate: repo.isPrivate,
     url: repo.url,
     topics: repo.topics,
     contributors: repo.contributors,
-    commits: repo.commits,
-    branches: repo.branches,
+    commits,
+    branches,
     complexityScore,
     marketRelevance,
     aiReview: (() => {

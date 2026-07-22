@@ -139,9 +139,14 @@ export default function ExplorePage() {
                               {repo.owner}/{repo.name}
                             </span>
                           </div>
-                          {repo.trending && (
-                            <Badge variant="success">{repo.trending}</Badge>
-                          )}
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {repo.isLocal && (
+                              <Badge variant="info" className="h-5 px-1.5 text-[10px] font-semibold bg-accent-primary/20 text-accent-primary border-accent-primary/30">DevPulse</Badge>
+                            )}
+                            {repo.trending && (
+                              <Badge variant={repo.isLocal ? "default" : "success"} className="h-5 px-1.5 text-[10px]">{repo.trending}</Badge>
+                            )}
+                          </div>
                         </div>
                         <p className="text-sm text-text-secondary dark:text-text-dark-secondary mb-4 line-clamp-2">
                           {repo.description || 'No description provided.'}

@@ -43,10 +43,13 @@ export default function ComparePage() {
   };
 
   const metrics = result ? [
-    { label: 'Repositories', user1: result.stats1.repositories, user2: result.stats2.repositories },
-    { label: 'Followers', user1: result.stats1.followers, user2: result.stats2.followers },
-    { label: 'Contributions', user1: result.stats1.contributions, user2: result.stats2.contributions },
-    { label: 'Streak', user1: result.stats1.streak, user2: result.stats2.streak },
+    { label: 'Lifetime Contributions', val1: result.stats1.contributions, val2: result.stats2.contributions },
+    { label: 'Current Streak', val1: result.stats1.streak, val2: result.stats2.streak },
+    { label: 'Public Repositories', val1: result.stats1.repositories, val2: result.stats2.repositories },
+    { label: 'Project Complexity', val1: (result.stats1 as any).avgComplexity ?? 70, val2: (result.stats2 as any).avgComplexity ?? 70, suffix: '%' },
+    { label: 'Stars Earned', val1: (result.stats1 as any).stars ?? 0, val2: (result.stats2 as any).stars ?? 0 },
+    { label: 'Total Forks', val1: (result.stats1 as any).forks ?? 0, val2: (result.stats2 as any).forks ?? 0 },
+    { label: 'Followers', val1: result.stats1.followers, val2: result.stats2.followers },
   ] : [];
 
   return (
@@ -199,8 +202,9 @@ export default function ComparePage() {
               </CardHeader>
               <div className="space-y-4">
                 {metrics.map((metric) => {
-                  const max = Math.max(metric.user1, metric.user2) || 1;
-                  const winner = metric.user1 > metric.user2 ? 'user1' : metric.user2 > metric.user1 ? 'user2' : 'tie';
+                  const max = Math.max(metric.val1, metric.val2) || 1;
+                  const winner = metric.val1 > metric.val2 ? 'user1' : metric.val2 > metric.val1 ? 'user2' : 'tie';
+                  const suffix = metric.suffix || '';
                   return (
                     <div key={metric.label} className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
@@ -213,13 +217,13 @@ export default function ComparePage() {
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-xs text-text-muted dark:text-text-dark-muted">{result.user1.username}</span>
-                            <span className="text-xs font-medium text-text-primary dark:text-white">{metric.user1}</span>
+                            <span className="text-xs font-medium text-text-primary dark:text-white">{metric.val1}{suffix}</span>
                           </div>
                           <div className="h-2 bg-light-border dark:bg-dark-border rounded-full overflow-hidden">
                             <motion.div
                               className="h-full bg-accent-primary rounded-full"
                               initial={{ width: 0 }}
-                              animate={{ width: `${(metric.user1 / max) * 100}%` }}
+                              animate={{ width: `${(metric.val1 / max) * 100}%` }}
                               transition={{ duration: 0.8 }}
                             />
                           </div>
@@ -228,13 +232,13 @@ export default function ComparePage() {
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-xs text-text-muted dark:text-text-dark-muted">{result.user2.username}</span>
-                            <span className="text-xs font-medium text-text-primary dark:text-white">{metric.user2}</span>
+                            <span className="text-xs font-medium text-text-primary dark:text-white">{metric.val2}{suffix}</span>
                           </div>
                           <div className="h-2 bg-light-border dark:bg-dark-border rounded-full overflow-hidden">
                             <motion.div
                               className="h-full bg-accent-warning rounded-full"
                               initial={{ width: 0 }}
-                              animate={{ width: `${(metric.user2 / max) * 100}%` }}
+                              animate={{ width: `${(metric.val2 / max) * 100}%` }}
                               transition={{ duration: 0.8 }}
                             />
                           </div>

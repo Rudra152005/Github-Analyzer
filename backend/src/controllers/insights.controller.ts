@@ -4,20 +4,42 @@ import { Repository } from '../models/Repository';
 import { Job } from '../models/Job';
 import { AppError } from '../middleware/errorHandler';
 import { generateInsights } from '../services/gemini.service';
+import { fetchGitHubRepos, mapGitHubRepo } from '../services/github.service';
+import { decrypt } from '../utils/encryption';
 import { cacheGet, cacheSet } from '../config/redis';
 import { enqueueInsightJob } from '../jobs/queues/insightQueue';
 import { logger } from '../utils/logger';
 
 export async function getInsights(req: Request, res: Response): Promise<void> {
   const userId = req.session.userId!;
-  const cacheKey = `insights:${userId}`;
+  const cacheKey = `insights:v5:${userId}`;
   const cached = await cacheGet(cacheKey);
   if (cached) { res.json(cached); return; }
 
   const user = await User.findById(userId).lean();
   if (!user) throw new AppError('User not found', 404);
 
-  const repos = await Repository.find({ userId }).sort({ stars: -1 }).limit(15).lean();
+  let repos = await Repository.find({ userId }).sort({ stars: -1 }).limit(20).lean();
+
+  if (repos.length === 0) {
+    try {
+      const token = decrypt(user.githubAccessToken || '');
+      const ghRepos = await fetchGitHubRepos(token, user.username);
+      const mapped = ghRepos.map(mapGitHubRepo);
+      await Promise.all(
+        mapped.map((m) =>
+          Repository.findOneAndUpdate(
+            { userId, githubId: m.githubId },
+            { userId, ...m, cachedAt: new Date() },
+            { upsert: true, new: true }
+          )
+        )
+      );
+      repos = await Repository.find({ userId }).sort({ stars: -1 }).limit(20).lean();
+    } catch (err: any) {
+      logger.warn(`Failed to auto-fetch repos for insights: ${err.message}`);
+    }
+  }
 
   const insights = await generateInsights(
     repos.map((r) => ({

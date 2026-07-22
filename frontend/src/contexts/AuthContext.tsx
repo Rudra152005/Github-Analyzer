@@ -5,8 +5,7 @@ import { api } from '../lib/api';
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
-  login: () => void;
-  devLogin: () => void;
+  login: (username: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -32,12 +31,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshUser();
   }, []);
 
-  const login = () => {
-    window.location.href = api.auth.getGitHubLoginUrl();
-  };
-
-  const devLogin = () => {
-    window.location.href = api.auth.getDevLoginUrl();
+  const login = async (username: string) => {
+    setLoading(true);
+    try {
+      await api.auth.usernameLogin(username);
+      await refreshUser();
+      window.location.href = '/dashboard';
+    } catch (err) {
+      console.error('Login failed:', err);
+      setLoading(false);
+      throw err;
+    }
   };
 
   const logout = async () => {
@@ -52,7 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, devLogin, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

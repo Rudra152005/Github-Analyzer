@@ -297,39 +297,60 @@ export default function CareerAnalyzerPage() {
                     </div>
                   </div>
                   <div className="p-4 bg-light-surface-secondary dark:bg-dark-card rounded-lg">
-                    <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center gap-2 mb-2">
                       <Star className="w-5 h-5 text-accent-primary" />
-                      <span className="text-sm font-medium text-text-primary dark:text-white">Role Match</span>
+                      <span className="text-sm font-medium text-text-primary dark:text-white">Project Complexity & Market Value</span>
                     </div>
-                    <div className="text-2xl font-bold text-accent-primary">{analysis.score}%</div>
-                    <p className="text-xs text-text-muted dark:text-text-dark-muted mt-1">
-                      {analysis.roleMatch ?? (
-                        analysis.score >= 80 ? 'Strong candidate' : analysis.score >= 60 ? 'Potential candidate' : 'Needs development'
-                      )}
+                    <div className="flex items-center justify-between mt-2 text-xs text-text-secondary dark:text-text-dark-secondary">
+                      <span>Code Complexity: <strong className="text-accent-primary">{analysis.projectComplexityScore ?? 75}%</strong></span>
+                      <span>Market Alignment: <strong className="text-accent-primary">{analysis.marketRelevanceScore ?? 80}%</strong></span>
+                    </div>
+                    <p className="text-xs text-text-muted dark:text-text-dark-muted mt-2">
+                      Role Match: <strong className="text-text-primary dark:text-white">{analysis.roleMatch}</strong>
                     </p>
                   </div>
                 </div>
               </div>
             </Card>
 
-            {/* Missing Skills */}
-            {analysis.missingSkills.length > 0 && (
-              <Card padding="lg">
-                <CardHeader className="pb-4">
-                  <CardTitle className="flex items-center gap-2">
-                    <Target className="w-5 h-5 text-accent-primary" />
-                    Missing Skills for {selectedRole}
-                  </CardTitle>
-                </CardHeader>
-                <div className="flex flex-wrap gap-2">
-                  {analysis.missingSkills.map((skill) => (
-                    <Badge key={skill} variant="warning">
-                      {skill}
-                    </Badge>
-                  ))}
-                </div>
-              </Card>
-            )}
+            {/* Detected Tech Stack & Missing Skills */}
+            <div className="grid lg:grid-cols-2 gap-6">
+              {analysis.detectedTechStack && analysis.detectedTechStack.length > 0 && (
+                <Card padding="lg">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <CheckCircle className="w-4 h-4 text-accent-primary" />
+                      Detected Skills from GitHub Repos
+                    </CardTitle>
+                  </CardHeader>
+                  <div className="flex flex-wrap gap-2">
+                    {analysis.detectedTechStack.map((tech) => (
+                      <Badge key={tech} variant="success">
+                        {tech}
+                      </Badge>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {analysis.missingSkills.length > 0 && (
+                <Card padding="lg">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <Target className="w-4 h-4 text-accent-warning" />
+                      Missing Core Skills for {selectedRole}
+                    </CardTitle>
+                  </CardHeader>
+                  <div className="flex flex-wrap gap-2">
+                    {analysis.missingSkills.map((skill) => (
+                      <Badge key={skill} variant="warning">
+                        {skill}
+                      </Badge>
+                    ))}
+                  </div>
+                </Card>
+              )}
+            </div>
 
             {/* Learning Roadmap */}
             {analysis.learningRoadmap.length > 0 && (

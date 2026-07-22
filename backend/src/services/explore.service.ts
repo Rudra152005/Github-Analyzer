@@ -78,37 +78,56 @@ export async function getTrendingTopics(): Promise<TrendingTopic[]> {
 }
 
 export async function getTrendingRepos(q?: string) {
-  const cacheKey = `explore:trendingrepos:${q || 'default'}`;
+  const cacheKey = `explore:trendingrepos:v2:${q || 'default'}`;
   const cached = await cacheGet<any[]>(cacheKey);
   if (cached) return cached;
 
-  if (!q) {
-    try {
-      const dbRepos = await Repository.find({ isPrivate: false })
-        .sort({ stars: -1, healthScore: -1 })
-        .limit(12)
-        .lean();
+  let localRepos: any[] = [];
+  try {
+    const queryCond: any = { isPrivate: false };
+    if (q) {
+      queryCond.$or = [
+        { name: new RegExp(q, 'i') },
+        { description: new RegExp(q, 'i') },
+        { language: new RegExp(q, 'i') },
+      ];
+    }
+    const dbRepos = await Repository.find(queryCond)
+      .sort({ stars: -1, healthScore: -1 })
+      .limit(10)
+      .lean();
 
-      if (dbRepos.length >= 4) {
-        const result = dbRepos.map((r) => ({
-          name: r.name,
-          owner: r.fullName.split('/')[0],
-          description: r.description ?? '',
-          stars: r.stars,
-          language: r.language ?? '',
-          trending: `⭐ ${r.healthScore}% Health`,
-          url: r.url,
-        }));
-        await cacheSet(cacheKey, result, 600);
-        return result;
-      }
-    } catch {
-      // fallback
+    localRepos = dbRepos.map((r) => ({
+      name: r.name,
+      owner: r.fullName.split('/')[0],
+      description: r.description ?? '',
+      stars: r.stars,
+      language: r.language ?? '',
+      trending: `⭐ ${r.healthScore}% Health`,
+      url: r.url,
+      isLocal: true,
+    }));
+  } catch (err) {
+    // ignore
+  }
+
+  // Get global trending repos
+  const globalRepos = await fetchTrendingRepos(q);
+
+  // Combine them, putting local ones at the top and avoiding duplicate repository urls
+  const combined = [...localRepos];
+  const seenUrls = new Set(localRepos.map((r) => (r.url || '').toLowerCase()));
+  
+  for (const gr of globalRepos) {
+    const urlLower = (gr.url || '').toLowerCase();
+    if (urlLower && !seenUrls.has(urlLower)) {
+      combined.push(gr);
+      seenUrls.add(urlLower);
     }
   }
 
-  const result = await fetchTrendingRepos(q);
-  await cacheSet(cacheKey, result, 600);
+  const result = combined.slice(0, 12);
+  await cacheSet(cacheKey, result, 300); // 5 min cache
   return result;
 }
 

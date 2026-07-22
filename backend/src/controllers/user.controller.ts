@@ -25,7 +25,7 @@ import { cacheGet, cacheSet } from '../config/redis';
 async function getTokenAndUser(userId: string) {
   const user = await User.findById(userId);
   if (!user) throw new AppError('User not found', 404);
-  const token = decrypt(user.githubAccessToken);
+  const token = decrypt(user.githubAccessToken || '');
   return { user, token };
 }
 
@@ -33,19 +33,19 @@ async function getTokenAndUser(userId: string) {
 
 export async function getProfile(req: Request, res: Response): Promise<void> {
   const { user, token } = await getTokenAndUser(req.session.userId!);
- 
-  // Refresh from GitHub if older than 15 min or if contributions are 0
-  const sinceSync = user.lastSyncedAt
-    ? Date.now() - user.lastSyncedAt.getTime()
-    : Infinity;
- 
-  if (sinceSync > 15 * 60 * 1000 || !user.contributions || user.contributions === 0) {
-    const fresh = await fetchGitHubProfile(token, user.username);
-    Object.assign(user, fresh);
-    user.lastSyncedAt = new Date();
-    await user.save();
+
+  const fresh = await fetchGitHubProfile(token, user.username);
+  Object.assign(user, fresh);
+
+  // Always use DB repo count as source of truth (more reliable than scraped HTML)
+  const dbReposCount = await Repository.countDocuments({ userId: String(user._id) });
+  if (dbReposCount > 0) {
+    user.publicRepos = dbReposCount;
   }
- 
+
+  user.lastSyncedAt = new Date();
+  await user.save();
+
   res.json(toUserProfile(user));
 }
 
@@ -55,38 +55,41 @@ export async function getRepos(req: Request, res: Response): Promise<void> {
   const { user, token } = await getTokenAndUser(req.session.userId!);
   const { sort = 'stars', q = '' } = req.query as { sort?: string; q?: string };
 
-  // Fetch fresh repos from GitHub
+  // Fetch fresh repos from GitHub (REST API → HTML scrape fallback)
   const ghRepos = await fetchGitHubRepos(token, user.username);
 
-  // Map + calculate health scores + persist/update in DB
+  if (ghRepos.length === 0) {
+    res.json([]);
+    return;
+  }
+
+  // Delete all existing repo docs for this user so stale 0-star rows are gone
+  await Repository.deleteMany({ userId: String(user._id) });
+
+  // Map + calculate health scores + persist in DB
   const repoUpdates = await Promise.all(
     ghRepos.map(async (r, index) => {
       const mapped = mapGitHubRepo(r);
 
-      // Get commit count (from DB if cached, else fetch or approximate)
-      const existing = await Repository.findOne({ userId: String(user._id), githubId: mapped.githubId });
-      
-      let commits = existing?.commits;
-      let contributors = existing?.contributors;
-      let branches = existing?.branches;
+      let commits: number | undefined;
+      let contributors: number | undefined;
+      let branches: number | undefined;
 
-      if (!commits || !contributors || !branches || (commits === 50 && contributors === 1)) {
-        // Try to fetch from GitHub if it's one of the top 5 repos and not a mock token
-        if (token !== 'mock_github_token_for_seeding' && index < 5) {
-          const ownerName = r.owner?.login || user.username;
-          const stats = await fetchRepoExtraStats(token, ownerName, r.name);
-          if (stats) {
-            commits = stats.commits;
-            contributors = stats.contributors;
-            branches = stats.branches;
-          }
+      // Try to fetch extra stats for top repos if authenticated
+      if (token && token !== 'mock_github_token_for_seeding' && index < 5) {
+        const ownerName = (r as any).owner?.login || user.username;
+        const stats = await fetchRepoExtraStats(token, ownerName, r.name).catch(() => null);
+        if (stats) {
+          commits = stats.commits;
+          contributors = stats.contributors;
+          branches = stats.branches;
         }
-
-        // Fallbacks with randomized offsets so we don't display duplicate statistics
-        commits = commits ?? Math.max(10, Math.round(r.stargazers_count * 0.3 + 12 + Math.floor(Math.random() * 60)));
-        contributors = contributors ?? Math.max(1, Math.round(r.forks_count * 0.3 + Math.floor(Math.random() * 3) + 1));
-        branches = branches ?? Math.max(1, Math.round(Math.log2(commits + 1) + Math.floor(Math.random() * 2) + 1));
       }
+
+      // Stable fallbacks (no random numbers)
+      commits = commits ?? Math.max(1, Math.round(r.stargazers_count * 0.1));
+      contributors = contributors ?? Math.max(1, Math.round(r.forks_count * 0.1));
+      branches = branches ?? 1;
 
       const healthScore = calcHealthScore({
         ...mapped,
@@ -106,18 +109,15 @@ export async function getRepos(req: Request, res: Response): Promise<void> {
         cachedAt: new Date(),
       };
 
-      await Repository.findOneAndUpdate(
-        { userId: String(user._id), githubId: mapped.githubId },
-        repoDoc,
-        { upsert: true, new: true }
-      );
-
-      return { ...repoDoc, id: existing ? String(existing._id) : '' };
+      const saved = await Repository.create(repoDoc);
+      return { ...repoDoc, id: String(saved._id) };
     })
   );
 
-  // Update leaderboard score
-  const totalStars = repoUpdates.reduce((s, r) => s + r.stars, 0);
+  // Update publicRepos count and leaderboard
+  const totalStars = repoUpdates.reduce((s, r) => s + (r.stars || 0), 0);
+  user.publicRepos = repoUpdates.length;
+  await user.save();
   await updateLeaderboardScore(String(user._id), totalStars);
 
   // Filter + sort
@@ -159,6 +159,47 @@ export async function getActivity(req: Request, res: Response): Promise<void> {
 
 export async function getLanguages(req: Request, res: Response): Promise<void> {
   const { user, token } = await getTokenAndUser(req.session.userId!);
+
+  // Read from DB repos (populated by getRepos) to avoid extra GitHub API calls
+  const dbRepos = await Repository.find({ userId: String(user._id) }).lean();
+
+  if (dbRepos.length > 0) {
+    // Build language stats directly from DB repos (no API calls needed)
+    const langCounts: Record<string, number> = {};
+    const langRepos: Record<string, number> = {};
+    for (const r of dbRepos) {
+      const lang = r.language || '';
+      if (lang && lang !== 'Unknown') {
+        langCounts[lang] = (langCounts[lang] ?? 0) + 1000;
+        langRepos[lang] = (langRepos[lang] ?? 0) + 1;
+      }
+    }
+    const total = Object.values(langCounts).reduce((a, b) => a + b, 0);
+    if (total > 0) {
+      const stats = Object.entries(langCounts)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 8)
+        .map(([lang, count]) => {
+          const LANG_COLORS: Record<string, string> = {
+            TypeScript: '#3178c6', JavaScript: '#f7df1e', Python: '#3776ab',
+            Go: '#00add8', Rust: '#dea584', Java: '#b07219', 'C++': '#f34b7d',
+            C: '#555555', 'C#': '#178600', PHP: '#4F5D95', Ruby: '#701516',
+            Shell: '#89e051', Kotlin: '#A97BFF', Swift: '#ffac45', HTML: '#e34c26',
+            CSS: '#563d7c', Vue: '#41b883', Svelte: '#ff3e00',
+          };
+          return {
+            language: lang,
+            percentage: Math.round((count / total) * 100),
+            color: LANG_COLORS[lang] ?? '#8b949e',
+            repos: langRepos[lang] ?? 1,
+          };
+        });
+      res.json(stats);
+      return;
+    }
+  }
+
+  // Fallback: fetch from GitHub API
   const ghRepos = await fetchGitHubRepos(token, user.username);
   const languages = await fetchLanguageStats(token, user.username, ghRepos);
   res.json(languages);

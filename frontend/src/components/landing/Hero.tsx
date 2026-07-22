@@ -91,7 +91,7 @@ export default function Hero() {
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [role, setRole] = useState<string>(jobRoles[2].value);
   const navigate = useNavigate();
-  const { login, devLogin } = useAuth();
+  const { login } = useAuth();
 
 
   const [stats, setStats] = useState(defaultStats);
@@ -111,12 +111,13 @@ export default function Hero() {
       .catch((err) => console.error('Failed to load global stats:', err));
   }, []);
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (username.trim()) {
-      if (username.trim().toLowerCase() === 'alexjohnson') {
-        devLogin();
-      } else {
-        login();
+      try {
+        await login(username.trim());
+      } catch (err: any) {
+        const errorMsg = err.response?.data?.message || err.message || 'GitHub username not found. Please verify the handle on GitHub.';
+        alert(errorMsg);
       }
     }
   };
@@ -185,14 +186,7 @@ export default function Hero() {
           </div>
 
           <div className="flex items-center gap-4">
-            {import.meta.env.DEV && (
-              <Button variant="ghost" className="text-text-secondary dark:text-text-dark-secondary hover:text-accent-primary" onClick={devLogin}>
-                Dev Bypass Login
-              </Button>
-            )}
-            <Button variant="outline" className="border-accent-primary text-accent-primary" onClick={login}>
-              Login with GitHub
-            </Button>
+            {/* Login buttons removed */}
           </div>
         </nav>
 

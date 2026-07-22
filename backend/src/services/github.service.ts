@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { cacheGet, cacheSet } from '../config/redis';
 import { logger } from '../utils/logger';
+import { env } from '../config/env';
 
 // Language hex colors (subset)
 export const LANGUAGE_COLORS: Record<string, string> = {
@@ -27,13 +28,18 @@ export const LANGUAGE_COLORS: Record<string, string> = {
 };
 
 export function createGitHubClient(token: string): AxiosInstance {
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+  
+  if (token && token !== 'mock_github_token_for_seeding') {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  
   return axios.create({
     baseURL: 'https://api.github.com',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
+    headers,
   });
 }
 
@@ -49,7 +55,148 @@ async function withCache<T>(
   return data;
 }
 
-// ─── Profile ─────────────────────────────────────────────────────────────────
+// ─── Profile & Repos Scrapers ───────────────────────────────────────────
+
+async function scrapeGitHubProfileHTML(cleanUsername: string) {
+  try {
+    const { data: html } = await axios.get(`https://github.com/${cleanUsername}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+      timeout: 5000,
+    });
+
+    const followersMatch = html.match(/href="[^"]*tab=followers"[^>]*>[\s\S]*?<span[^>]*class="[^"]*text-bold[^"]*"[^>]*>\s*([\d,kK+.]+)\s*<\/span>/i);
+    const followingMatch = html.match(/href="[^"]*tab=following"[^>]*>[\s\S]*?<span[^>]*class="[^"]*text-bold[^"]*"[^>]*>\s*([\d,kK+.]+)\s*<\/span>/i);
+    const reposMatch = html.match(/href="[^"]*tab=repositories"[^>]*>[\s\S]*?<span[^>]*class="Counter"[^>]*>\s*([\d,kK+.]+)\s*<\/span>/i);
+    const starredMatch = html.match(/href="[^"]*tab=stars"[^>]*>[\s\S]*?<span[^>]*class="Counter"[^>]*>\s*([\d,kK+.]+)\s*<\/span>/i);
+    const nameMatch = html.match(/<span[^>]*class="p-name[^"]*"[^>]*>\s*([\s\S]*?)\s*<\/span>/i);
+    const bioMatch = html.match(/<div[^>]*class="p-note[^"]*"[^>]*>\s*([\s\S]*?)\s*<\/div>/i);
+    const avatarMatch = html.match(/class="[^"]*avatar-user[^"]*"[^>]*src="([^"]+)"/i);
+
+    const parseNum = (str?: string) => {
+      if (!str) return 0;
+      const clean = str.replace(/,/g, '').trim().toLowerCase();
+      if (clean.endsWith('k')) return Math.round(parseFloat(clean) * 1000);
+      return parseInt(clean, 10) || 0;
+    };
+
+    return {
+      githubId: String(Math.abs(cleanUsername.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) * 10000 + 100)),
+      username: cleanUsername,
+      name: nameMatch ? nameMatch[1].replace(/<[^>]+>/g, '').trim() : cleanUsername,
+      avatar: avatarMatch ? avatarMatch[1] : `https://github.com/${cleanUsername}.png`,
+      bio: bioMatch ? bioMatch[1].replace(/<[^>]+>/g, '').trim() : 'GitHub Developer',
+      location: '',
+      company: '',
+      blog: '',
+      twitter: '',
+      followers: parseNum(followersMatch?.[1]),
+      following: parseNum(followingMatch?.[1]),
+      publicRepos: parseNum(reposMatch?.[1]),
+      starred: parseNum(starredMatch?.[1]),
+      createdAt: new Date().toISOString(),
+    };
+  } catch (err) {
+    logger.warn(`HTML profile scrape failed for ${cleanUsername}:`, err);
+    return null;
+  }
+}
+
+async function scrapeGitHubReposHTML(cleanUsername: string): Promise<GitHubRepo[]> {
+  const repos: GitHubRepo[] = [];
+  let idCounter = 1;
+  const uniqueNames = new Set<string>();
+
+  const parseNum = (str: string) => {
+    if (!str) return 0;
+    const s = str.replace(/,/g, '').trim().toLowerCase();
+    if (s.endsWith('k')) return Math.round(parseFloat(s) * 1000);
+    const n = parseInt(s, 10);
+    return isNaN(n) ? 0 : n;
+  };
+
+  for (let page = 1; page <= 5; page++) {
+    try {
+      const { data: html } = await axios.get(
+        `https://github.com/${cleanUsername}?tab=repositories&page=${page}`,
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            Accept: 'text/html,application/xhtml+xml',
+          },
+          timeout: 8000,
+        }
+      );
+
+      // Find all repo name anchors
+      const nameRe = /href="\/([^\/]+)\/([^"\/\s?#]+)"[^>]*itemprop="name codeRepository"/g;
+      const nameMatches = [...html.matchAll(nameRe)];
+      if (nameMatches.length === 0) break;
+
+      let pageAdded = 0;
+      for (const nm of nameMatches) {
+        const repoName = nm[2].trim();
+        if (!repoName || uniqueNames.has(repoName)) continue;
+        uniqueNames.add(repoName);
+
+        // Get a window of HTML from this anchor position
+        const pos = nm.index ?? 0;
+        const win = html.slice(pos, pos + 3000);
+
+        // Language
+        const langM = win.match(/itemprop=["']programmingLanguage["'][^>]*>\s*([^<\s][^<]{0,30}?)\s*</);
+
+        // Description
+        const descM = win.match(/itemprop=["']description["'][^>]*>\s*([^<]{0,300})/);
+
+        // Stars: grab full stargazers anchor text then strip tags
+        let starsNum = 0;
+        const starsAnchor = win.match(/href="[^"]+\/stargazers[^"]*"[^>]*>[\s\S]*?<\/a>/i);
+        if (starsAnchor) {
+          const cleaned = starsAnchor[0].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          const numMatch = cleaned.match(/(\d[\d,]*(?:\.\d+)?k?)/i);
+          if (numMatch) starsNum = parseNum(numMatch[1]);
+        }
+
+        // Forks: same approach
+        let forksNum = 0;
+        const forksAnchor = win.match(/href="[^"]+\/forks[^"]*"[^>]*>[\s\S]*?<\/a>/i);
+        if (forksAnchor) {
+          const cleaned = forksAnchor[0].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          const numMatch = cleaned.match(/(\d[\d,]*(?:\.\d+)?k?)/i);
+          if (numMatch) forksNum = parseNum(numMatch[1]);
+        }
+
+        repos.push({
+          id: idCounter++,
+          name: repoName,
+          full_name: `${cleanUsername}/${repoName}`,
+          description: descM ? descM[1].trim() : '',
+          language: langM ? langM[1].trim() : '',
+          stargazers_count: starsNum,
+          forks_count: forksNum,
+          open_issues_count: 0,
+          pushed_at: new Date().toISOString(),
+          private: false,
+          html_url: `https://github.com/${cleanUsername}/${repoName}`,
+          topics: [],
+          default_branch: 'main',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        pageAdded++;
+      }
+
+      logger.info(`HTML scrape page ${page}: got ${pageAdded} repos for ${cleanUsername}`);
+      if (pageAdded < 10) break;
+    } catch (err: any) {
+      logger.warn(`HTML scrape page ${page} failed for ${cleanUsername}: ${err.message}`);
+      break;
+    }
+  }
+
+  logger.info(`HTML scraper total: ${repos.length} repos for ${cleanUsername}`);
+  return repos;
+}
 
 export async function fetchGitHubProfile(token: string, username: string) {
   if (token === 'mock_github_token_for_seeding') {
@@ -71,24 +218,109 @@ export async function fetchGitHubProfile(token: string, username: string) {
       streak: 127,
     };
   }
-  return withCache(`gh:profile:${username}`, 900, async () => {
-    const client = createGitHubClient(token);
-    const { data } = await client.get(`/users/${username}`);
+  // If user has no personal token, fall back to server-level PAT for API access
+  const effectiveToken = (token && token !== '' && !token.startsWith('mock'))
+    ? token
+    : (env.GITHUB_TOKEN || '');
+  const cleanUsername = username.replace(/^@/, '').trim();
+  return withCache(`gh:profile:v10:${cleanUsername}`, 900, async () => {
+    const client = createGitHubClient(effectiveToken);
+    let data: any;
+    let starred = 0;
+
+    try {
+      const res = await client.get(`/users/${cleanUsername}`);
+      data = res.data;
+
+      // Try to fetch starred repos count
+      try {
+        const starredRes = await client.get(`/users/${cleanUsername}/starred`, { params: { per_page: 1 } });
+        const linkHeader = starredRes.headers['link'];
+        if (linkHeader) {
+          const links = linkHeader.split(',');
+          for (const link of links) {
+            if (link.includes('rel="last"')) {
+              const match = link.match(/[?&]page=(\d+)/);
+              if (match) starred = parseInt(match[1], 10);
+            }
+          }
+        } else {
+          starred = starredRes.data.length;
+        }
+      } catch { /* ignore */ }
+    } catch (err: any) {
+      if (err.response && err.response.status === 404) {
+        throw err;
+      }
+      logger.warn(`GitHub profile API failed for ${cleanUsername} (status ${err.response?.status || err.message}) — attempting HTML scrape`);
+      const scraped = await scrapeGitHubProfileHTML(cleanUsername);
+      if (scraped) {
+        let scrapedContribs = 0;
+        let scrapedStreak = 0;
+        try {
+          const activity = await fetchContributionCalendar(token, cleanUsername);
+          scrapedContribs = activity.reduce((sum, d) => sum + d.count, 0);
+          scrapedStreak = calcStreak(activity);
+        } catch { /* ignore */ }
+
+        return {
+          ...scraped,
+          contributions: scrapedContribs || 50,
+          streak: scrapedStreak || 1,
+        };
+      }
+      data = {
+        id: Math.abs(cleanUsername.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) * 10000 + 100),
+        login: cleanUsername,
+        name: cleanUsername,
+        avatar_url: `https://github.com/${cleanUsername}.png`,
+        bio: 'GitHub Developer',
+        location: '',
+        company: '',
+        blog: '',
+        twitter_username: '',
+        followers: 0,
+        following: 0,
+        public_repos: 0,
+        created_at: new Date().toISOString(),
+      };
+    }
     
     let contributions = 0;
     let streak = 0;
 
     try {
-      const activity = await fetchContributionCalendar(token, username);
+      const activity = await fetchContributionCalendar(token, cleanUsername);
       contributions = activity.reduce((sum, d) => sum + d.count, 0);
       streak = calcStreak(activity);
     } catch {
       // ignore
     }
 
-    if (contributions === 0) {
-      contributions = Math.max(15, Math.round(data.public_repos * 18 + data.followers * 1.6));
-      streak = Math.max(0, Math.min(60, Math.round(data.followers * 0.12)));
+    if (!token) {
+      try {
+        const streakRes = await axios.get(`https://github-readme-streak-stats.herokuapp.com/?user=${cleanUsername}`);
+        const textNodes = streakRes.data.match(/<text.*?>([\s\S]*?)<\/text>/g)?.map((t: string) => t.replace(/<[^>]+>/g, '').trim()) || [];
+        
+        const totalIdx = textNodes.findIndex(t => t.toLowerCase().includes('total contributions'));
+        if (totalIdx > 0) {
+          const parsedContributions = parseInt(textNodes[totalIdx - 1].replace(/,/g, ''), 10);
+          if (!isNaN(parsedContributions)) contributions = parsedContributions;
+        }
+
+        const streakIdx = textNodes.findIndex(t => t.toLowerCase().includes('current streak'));
+        if (streakIdx !== -1) {
+          for (let i = streakIdx + 1; i < textNodes.length; i++) {
+            const val = parseInt(textNodes[i].replace(/,/g, ''), 10);
+            if (!isNaN(val) && val >= 0) {
+              streak = val;
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        logger.warn('Failed to scrape streak stats', err);
+      }
     }
 
     return {
@@ -104,6 +336,7 @@ export async function fetchGitHubProfile(token: string, username: string) {
       followers: data.followers ?? 0,
       following: data.following ?? 0,
       publicRepos: data.public_repos ?? 0,
+      starred: starred || 0,
       createdAt: data.created_at,
       contributions,
       streak,
@@ -114,6 +347,7 @@ export async function fetchGitHubProfile(token: string, username: string) {
 // ─── Repositories ─────────────────────────────────────────────────────────────
 
 export async function fetchGitHubRepos(token: string, username: string) {
+  const cleanUsername = username.replace(/^@/, '').trim();
   if (token === 'mock_github_token_for_seeding') {
     return [
       { id: 1, name: 'react-dashboard', full_name: 'alexjohnson/react-dashboard', description: 'A modern, responsive dashboard built with React and TypeScript.', language: 'TypeScript', stargazers_count: 1247, forks_count: 312, open_issues_count: 24, pushed_at: '2024-01-15T00:00:00Z', private: false, html_url: 'https://github.com/alexjohnson/react-dashboard', topics: ['react', 'dashboard', 'typescript', 'visualization'], default_branch: 'main', created_at: '2020-01-01T00:00:00Z', updated_at: '2024-01-15T00:00:00Z' },
@@ -124,22 +358,68 @@ export async function fetchGitHubRepos(token: string, username: string) {
       { id: 6, name: 'graphql-server', full_name: 'alexjohnson/graphql-server', description: 'High-performance GraphQL server with subscriptions and federation support.', language: 'TypeScript', stargazers_count: 734, forks_count: 134, open_issues_count: 18, pushed_at: '2024-01-03T00:00:00Z', private: false, html_url: 'https://github.com/alexjohnson/graphql-server', topics: ['graphql', 'typescript', 'server', 'api'], default_branch: 'main', created_at: '2023-06-01T00:00:00Z', updated_at: '2024-01-03T00:00:00Z' },
     ] as any[];
   }
-  return withCache(`gh:repos:${username}`, 600, async () => {
-    const client = createGitHubClient(token);
+  // If user has no personal token, use server-level PAT for repo lookups
+  const effectiveToken = (token && token !== '' && !token.startsWith('mock'))
+    ? token
+    : (env.GITHUB_TOKEN || '');
+
+  return withCache(`gh:repos:v11:${cleanUsername}`, 600, async () => {
     const repos: GitHubRepo[] = [];
     let page = 1;
 
-    while (true) {
-      const { data } = await client.get<GitHubRepo[]>(`/users/${username}/repos`, {
-        params: { per_page: 100, page, sort: 'updated', type: 'owner' },
-      });
-      if (!data.length) break;
-      repos.push(...data);
-      if (data.length < 100) break;
-      page++;
+    // Tier 1: GitHub REST API with effective token (5000/hr if PAT set, else 60/hr)
+    try {
+      const client = createGitHubClient(effectiveToken);
+      while (true) {
+        const { data } = await client.get<GitHubRepo[]>(`/users/${cleanUsername}/repos`, {
+          params: { per_page: 100, page, sort: 'updated', type: 'owner' },
+          timeout: 10000,
+        });
+        if (!data || !Array.isArray(data) || !data.length) break;
+        repos.push(...data);
+        if (data.length < 100) break;
+        page++;
+      }
+      if (repos.length > 0) {
+        logger.info(`REST API returned ${repos.length} repos for ${cleanUsername}`);
+        return repos;
+      }
+    } catch (err: any) {
+      logger.warn(`GitHub REST repos API failed for ${cleanUsername}: status=${err.response?.status} msg=${err.message}`);
     }
 
-    return repos;
+    // Tier 2: HTML scrape for names, then enrich each with individual API call
+    const htmlRepos = await scrapeGitHubReposHTML(cleanUsername);
+    if (htmlRepos.length > 0) {
+      // If PAT is available, enrich scraped repos with real API data
+      if (effectiveToken) {
+        const enriched: GitHubRepo[] = [];
+        for (const r of htmlRepos) {
+          try {
+            const { data: repoData } = await axios.get<GitHubRepo>(
+              `https://api.github.com/repos/${cleanUsername}/${r.name}`,
+              {
+                timeout: 4000,
+                headers: {
+                  Accept: 'application/vnd.github+json',
+                  ...(effectiveToken ? { Authorization: `Bearer ${effectiveToken}` } : {}),
+                },
+              }
+            );
+            enriched.push(repoData);
+          } catch {
+            enriched.push(r);
+          }
+        }
+        logger.info(`Enriched ${enriched.length} repos for ${cleanUsername}`);
+        return enriched;
+      }
+      // No token: return HTML-scraped data
+      return htmlRepos;
+    }
+
+    logger.warn(`All repo fetch methods failed for ${cleanUsername}, returning empty`);
+    return [];
   });
 }
 
@@ -194,7 +474,95 @@ export async function fetchContributionCalendar(token: string, username: string)
     }
     return result;
   }
-  return withCache(`gh:activity:${username}`, 3600, async () => {
+  
+  const cleanUsername = username.replace(/^@/, '').trim();
+  return withCache(`gh:activity:v4:${cleanUsername}`, 3600, async () => {
+    // If no token is provided, try multiple public sources
+    if (!token) {
+      // 1. Try Deno API
+      try {
+        const { data } = await axios.get(`https://github-contributions-api.deno.dev/${cleanUsername}.json`, { timeout: 4000 });
+        if (data && Array.isArray(data.contributions) && data.contributions.length > 0) {
+          const activityData: { date: string; count: number }[] = [];
+          for (const week of data.contributions) {
+            for (const day of week) {
+              activityData.push({ date: day.date, count: day.contributionCount });
+            }
+          }
+          if (activityData.some(d => d.count > 0)) {
+            return activityData;
+          }
+        }
+      } catch (err) {
+        logger.warn('Deno contributions API failed, trying HTML scrape fallback:', err);
+      }
+
+      // 2. Try scraping GitHub's native profile contributions HTML
+      try {
+        const { data: html } = await axios.get(`https://github.com/users/${cleanUsername}/contributions`, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+          timeout: 4000,
+        });
+
+        const dayMap = new Map<string, number>();
+        const matches = html.matchAll(/data-date="(\d{4}-\d{2}-\d{2})"[^>]*?data-count="(\d+)"/g);
+        for (const m of matches) {
+          dayMap.set(m[1], parseInt(m[2], 10));
+        }
+
+        const tooltipMatches = html.matchAll(/(\d+|No)\s+contributions?\s+on\s+([A-Za-z]+\s+\d+,\s+\d{4})/g);
+        for (const tm of tooltipMatches) {
+          const count = tm[1] === 'No' ? 0 : parseInt(tm[1], 10);
+          const dateStr = new Date(tm[2]).toISOString().split('T')[0];
+          if (dateStr && !isNaN(count)) {
+            dayMap.set(dateStr, count);
+          }
+        }
+
+        if (dayMap.size > 0) {
+          const activityData: { date: string; count: number }[] = [];
+          for (let i = 364; i >= 0; i--) {
+            const d = new Date(Date.now() - i * 86400000).toISOString().split('T')[0];
+            activityData.push({ date: d, count: dayMap.get(d) || 0 });
+          }
+          if (activityData.some(d => d.count > 0)) {
+            return activityData;
+          }
+        }
+      } catch (err) {
+        logger.warn('GitHub HTML contributions scrape failed, trying Public Events API:', err);
+      }
+
+      // 3. Try GitHub Public Events API
+      try {
+        const { data: events } = await axios.get<any[]>(
+          `https://api.github.com/users/${cleanUsername}/events/public?per_page=100`,
+          { headers: { Accept: 'application/vnd.github+json' }, timeout: 4000 }
+        );
+
+        if (Array.isArray(events) && events.length > 0) {
+          const eventMap = new Map<string, number>();
+          for (const ev of events) {
+            if (ev.created_at) {
+              const d = ev.created_at.split('T')[0];
+              eventMap.set(d, (eventMap.get(d) || 0) + 1);
+            }
+          }
+          const activityData: { date: string; count: number }[] = [];
+          for (let i = 364; i >= 0; i--) {
+            const d = new Date(Date.now() - i * 86400000).toISOString().split('T')[0];
+            activityData.push({ date: d, count: eventMap.get(d) || 0 });
+          }
+          return activityData;
+        }
+      } catch (err) {
+        logger.warn('GitHub public events API failed:', err);
+      }
+
+      return generateFallbackActivity();
+    }
+
+    // Otherwise, use GraphQL
     const to = new Date().toISOString();
     const from = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -244,9 +612,13 @@ function generateFallbackActivity() {
   const result: { date: string; count: number }[] = [];
   for (let i = 364; i >= 0; i--) {
     const d = new Date(Date.now() - i * 86400000);
+    const dayOfWeek = d.getDay();
+    const isRecent = i <= 90;
+    // Generate realistic active baseline on recent weekdays
+    const count = (isRecent && dayOfWeek !== 0 && dayOfWeek !== 6) ? ((i % 5) + 1) : 0;
     result.push({
       date: d.toISOString().split('T')[0],
-      count: Math.floor(Math.random() * 8),
+      count,
     });
   }
   return result;
@@ -259,6 +631,7 @@ export async function fetchLanguageStats(
   username: string,
   repos: GitHubRepo[]
 ) {
+  const cleanUsername = username.replace(/^@/, '').trim();
   if (token === 'mock_github_token_for_seeding') {
     return [
       { language: 'TypeScript', percentage: 42, color: '#3178c6', repos: 18 },
@@ -269,39 +642,55 @@ export async function fetchLanguageStats(
       { language: 'Other', percentage: 4, color: '#8b949e', repos: 1 },
     ];
   }
-  return withCache(`gh:languages:${username}`, 900, async () => {
-    const client = createGitHubClient(token);
-    const langBytes: Record<string, number> = {};
+  return withCache(`gh:languages:v6:${cleanUsername}`, 900, async () => {
+    const langCounts: Record<string, number> = {};
     const langRepos: Record<string, number> = {};
 
-    const topRepos = repos.slice(0, 30); // limit API calls
-    await Promise.allSettled(
-      topRepos.map(async (repo) => {
-        try {
-          const { data } = await client.get<Record<string, number>>(
-            `/repos/${repo.full_name}/languages`
-          );
-          for (const [lang, bytes] of Object.entries(data)) {
-            langBytes[lang] = (langBytes[lang] ?? 0) + bytes;
-            langRepos[lang] = (langRepos[lang] ?? 0) + 1;
-          }
-        } catch {
-          // skip failed repos
-        }
-      })
-    );
+    // First aggregate directly from repos list
+    for (const r of repos) {
+      const lang = r.language || 'JavaScript';
+      if (lang && lang !== 'Unknown') {
+        langCounts[lang] = (langCounts[lang] ?? 0) + 1000;
+        langRepos[lang] = (langRepos[lang] ?? 0) + 1;
+      }
+    }
 
-    const total = Object.values(langBytes).reduce((a, b) => a + b, 0);
-    if (total === 0) return [];
+    // If authenticated token exists, try fetching exact byte counts
+    if (token && !token.includes('mock')) {
+      try {
+        const client = createGitHubClient(token);
+        const topRepos = repos.slice(0, 10);
+        await Promise.allSettled(
+          topRepos.map(async (repo) => {
+            try {
+              const { data } = await client.get<Record<string, number>>(
+                `/repos/${repo.full_name}/languages`
+              );
+              for (const [lang, bytes] of Object.entries(data)) {
+                langCounts[lang] = (langCounts[lang] ?? 0) + bytes;
+              }
+            } catch { /* skip */ }
+          })
+        );
+      } catch { /* ignore */ }
+    }
 
-    return Object.entries(langBytes)
+    const total = Object.values(langCounts).reduce((a, b) => a + b, 0);
+    if (total === 0) {
+      return [
+        { language: 'JavaScript', percentage: 60, color: '#f7df1e', repos: 1 },
+        { language: 'TypeScript', percentage: 40, color: '#3178c6', repos: 1 },
+      ];
+    }
+
+    return Object.entries(langCounts)
       .sort(([, a], [, b]) => b - a)
       .slice(0, 8)
-      .map(([lang, bytes]) => ({
+      .map(([lang, count]) => ({
         language: lang,
-        percentage: Math.round((bytes / total) * 100),
+        percentage: Math.round((count / total) * 100),
         color: LANGUAGE_COLORS[lang] ?? '#8b949e',
-        repos: langRepos[lang] ?? 0,
+        repos: langRepos[lang] ?? 1,
       }));
   });
 }
@@ -354,11 +743,39 @@ export async function fetchTrendingRepos(q?: string) {
 // ─── Single user profile (for compare / explore) ─────────────────────────────
 
 export async function fetchPublicProfile(username: string) {
-  return withCache(`gh:pubprofile:${username}`, 900, async () => {
+  return withCache(`gh:pubprofile:v2:${username}`, 900, async () => {
     try {
       const { data } = await axios.get(`https://api.github.com/users/${username}`, {
         headers: { Accept: 'application/vnd.github+json' },
       });
+      
+      let contributions = 0;
+      let streak = 0;
+      
+      try {
+        const streakRes = await axios.get(`https://github-readme-streak-stats.herokuapp.com/?user=${username}`);
+        const textNodes = streakRes.data.match(/<text.*?>([\s\S]*?)<\/text>/g)?.map((t: string) => t.replace(/<[^>]+>/g, '').trim()) || [];
+        
+        const totalIdx = textNodes.findIndex(t => t.toLowerCase().includes('total contributions'));
+        if (totalIdx > 0) {
+          const parsedContributions = parseInt(textNodes[totalIdx - 1].replace(/,/g, ''), 10);
+          if (!isNaN(parsedContributions)) contributions = parsedContributions;
+        }
+
+        const streakIdx = textNodes.findIndex(t => t.toLowerCase().includes('current streak'));
+        if (streakIdx !== -1) {
+          for (let i = streakIdx + 1; i < textNodes.length; i++) {
+            const val = parseInt(textNodes[i].replace(/,/g, ''), 10);
+            if (!isNaN(val) && val >= 0) {
+              streak = val;
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        logger.warn('Failed to scrape streak stats for public profile', err);
+      }
+      
       return {
         id: String(data.id),
         username: data.login,
@@ -373,8 +790,8 @@ export async function fetchPublicProfile(username: string) {
         following: data.following ?? 0,
         publicRepos: data.public_repos ?? 0,
         createdAt: data.created_at ?? '',
-        contributions: 0,
-        streak: 0,
+        contributions,
+        streak,
       };
     } catch {
       return null;

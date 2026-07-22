@@ -37,6 +37,7 @@ export interface UserProfile {
   followers: number;
   following: number;
   publicRepos: number;
+  starred?: number;
   createdAt: string;
   contributions: number;
   streak: number;
@@ -55,6 +56,10 @@ export interface CareerAnalysis {
   portfolioSuggestions: string[];
   roleMatch: string;                 // e.g. "Strong match" | "Partial match" | "Low match"
   learningRoadmap: LearningStep[];
+  projectComplexityScore?: number;
+  marketRelevanceScore?: number;
+  analyzedReposCount?: number;
+  detectedTechStack?: string[];
 }
 
 export interface LearningStep {

@@ -8,6 +8,7 @@ import {
   TrendingUp,
   Calendar,
   Flame,
+  Bookmark,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, Badge } from '../ui';
 import { ContributionHeatmap, LanguagePieChart, ContributionsChart } from '../charts';
@@ -72,24 +73,33 @@ export default function Dashboard() {
 
   const topRepos = [...repos].sort((a, b) => b.healthScore - a.healthScore).slice(0, 3);
 
+  const totalStars = repos.reduce((acc, repo) => acc + (repo.stars || 0), 0);
+  const totalForks = repos.reduce((acc, repo) => acc + (repo.forks || 0), 0);
+
   const stats = [
     {
       icon: GitBranch,
       label: 'Repositories',
-      value: user.publicRepos,
-      change: '+3 this month',
+      value: repos.length || user.publicRepos,
+      change: `${repos.length} total repos`,
     },
     {
       icon: Star,
       label: 'Stars Earned',
-      value: repos.reduce((acc, repo) => acc + repo.stars, 0),
-      change: '+127 this month',
+      value: totalStars,
+      change: `across ${repos.length} repos`,
     },
     {
       icon: GitFork,
       label: 'Total Forks',
-      value: repos.reduce((acc, repo) => acc + repo.forks, 0),
-      change: '+34 this month',
+      value: totalForks,
+      change: `across ${repos.length} repos`,
+    },
+    {
+      icon: Bookmark,
+      label: 'Starred Repos',
+      value: user.starred || 0,
+      change: 'starred by you',
     },
     {
       icon: Users,
@@ -127,7 +137,7 @@ export default function Dashboard() {
       </motion.div>
 
       {/* Stats Grid */}
-      <motion.div variants={item} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <motion.div variants={item} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {stats.map((stat) => (
           <Card key={stat.label} variant="interactive" padding="md">
             <div className="flex items-start justify-between">

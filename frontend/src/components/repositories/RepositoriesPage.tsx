@@ -279,22 +279,22 @@ export default function RepositoriesPage() {
                     </div>
 
                     {/* Stats List */}
-                    <div className="flex items-center gap-4 text-xs text-text-muted dark:text-text-dark-muted mb-4">
-                      <div className="flex items-center gap-1">
-                        <Star className="w-3.5 h-3.5" />
-                        {repo.stars.toLocaleString()}
+                    <div className="flex items-center gap-4 text-xs font-medium text-text-muted dark:text-text-dark-muted mb-4">
+                      <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-500/10 rounded-md text-amber-500 font-semibold">
+                        <Star className="w-3.5 h-3.5 fill-amber-500/20" />
+                        {(repo.stars ?? 0).toLocaleString()}
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1.5 px-2 py-1 bg-cyan-500/10 rounded-md text-cyan-500 font-semibold">
                         <GitFork className="w-3.5 h-3.5" />
-                        {repo.forks}
+                        {(repo.forks ?? 0).toLocaleString()}
                       </div>
                       <div className="flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        {repo.issues}
+                        <AlertTriangle className="w-3.5 h-3.5 text-accent-warning" />
+                        {repo.issues ?? 0}
                       </div>
                       <div className="flex items-center gap-1">
-                        <Users className="w-3.5 h-3.5" />
-                        {repo.contributors}
+                        <Users className="w-3.5 h-3.5 text-accent-info" />
+                        {repo.contributors ?? 1}
                       </div>
                     </div>
                   </div>
@@ -388,17 +388,17 @@ export default function RepositoriesPage() {
                       </div>
 
                       <div className="flex items-center gap-4 text-sm text-text-muted dark:text-text-dark-muted">
-                        <div className="flex items-center gap-1">
-                          <Star className="w-4 h-4" />
-                          {repo.stars.toLocaleString()}
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 rounded-md text-amber-500 font-semibold text-xs">
+                          <Star className="w-4 h-4 fill-amber-500/20" />
+                          {(repo.stars ?? 0).toLocaleString()}
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-cyan-500/10 rounded-md text-cyan-500 font-semibold text-xs">
                           <GitFork className="w-4 h-4" />
-                          {repo.forks}
+                          {(repo.forks ?? 0).toLocaleString()}
                         </div>
-                        <div className="flex items-center gap-1">
-                          <AlertTriangle className="w-4 h-4" />
-                          {repo.issues}
+                        <div className="flex items-center gap-1 text-xs">
+                          <AlertTriangle className="w-4 h-4 text-accent-warning" />
+                          {repo.issues ?? 0}
                         </div>
                       </div>
 

@@ -350,28 +350,36 @@ Return ONLY valid JSON. No markdown fences.`;
 // ─── Compare Analysis ─────────────────────────────────────────────────────────
 
 export async function compareUsers(
-  user1: { username: string; contributions: number; streak: number; publicRepos: number; followers: number },
-  user2: { username: string; contributions: number; streak: number; publicRepos: number; followers: number }
+  user1: { username: string; contributions: number; streak: number; publicRepos: number; followers: number; stars?: number; forks?: number; languages?: string[]; avgComplexity?: number },
+  user2: { username: string; contributions: number; streak: number; publicRepos: number; followers: number; stars?: number; forks?: number; languages?: string[]; avgComplexity?: number }
 ): Promise<string> {
-  const prompt = `Compare two GitHub developers and give a comprehensive match analysis:
+  const prompt = `Compare two GitHub developers and provide a deep, comprehensive engineering matchup analysis:
  
 Developer 1 (@${user1.username}):
-- Contributions: ${user1.contributions}
-- Streak: ${user1.streak} days
-- Public Repos: ${user1.publicRepos}
+- Lifetime Contributions: ${user1.contributions}
+- Active Streak: ${user1.streak} days
+- Public Repositories: ${user1.publicRepos}
+- Total Stars Earned: ${user1.stars ?? 0}
+- Total Forks: ${user1.forks ?? 0}
+- Primary Languages: ${(user1.languages || []).join(', ') || 'N/A'}
+- Average Project Complexity Score: ${user1.avgComplexity ?? 75}/100
 - Followers: ${user1.followers}
  
 Developer 2 (@${user2.username}):
-- Contributions: ${user2.contributions}
-- Streak: ${user2.streak} days
-- Public Repos: ${user2.publicRepos}
+- Lifetime Contributions: ${user2.contributions}
+- Active Streak: ${user2.streak} days
+- Public Repositories: ${user2.publicRepos}
+- Total Stars Earned: ${user2.stars ?? 0}
+- Total Forks: ${user2.forks ?? 0}
+- Primary Languages: ${(user2.languages || []).join(', ') || 'N/A'}
+- Average Project Complexity Score: ${user2.avgComplexity ?? 75}/100
 - Followers: ${user2.followers}
  
 Instructions:
-1. Explicitly state which profile is stronger overall (the winner).
-2. Explain what specific metrics make them stand out (contributions, streak consistency, repo breadth, or community size) and HOW (using the exact numbers above).
-3. Use formatted headings/bullet points for readability. Be objective and professional.
-4. Keep the summary focused and clear.`;
+1. Declare the overall winner profile clearly at the top (e.g. ### Winner Profile: @username).
+2. Compare overall records including total contributions, project complexity scores, primary tech stacks, repo quality/breadth, stars/forks, and consistency.
+3. Detail key differences in code engagement, repository depth, and tech stack versatility.
+4. Keep the summary structured with Markdown headings and bullet points. Be objective, precise, and professional.`;
  
   try {
     return await generate(prompt);
@@ -385,34 +393,22 @@ Instructions:
     let analysis = '';
     if (score1 > score2) {
       analysis += `### Winner Profile: @${user1.username}\n\n`;
-      analysis += `@${user1.username} represents the stronger development profile overall. Here is why and how:\n\n`;
-      if (user1.contributions > user2.contributions) {
-        analysis += `- **Higher Developer Engagement:** Has achieved **${user1.contributions}** contributions in the last year compared to @${user2.username}'s **${user2.contributions}** contributions.\n`;
+      analysis += `@${user1.username} represents the stronger development profile overall based on code contributions, repository complexity, and active streaks. Here is the detailed breakdown:\n\n`;
+      analysis += `- **Overall Contributions & Activity:** Has recorded **${user1.contributions}** total contributions with a **${user1.streak}** day active streak (compared to @${user2.username}'s **${user2.contributions}** contributions and **${user2.streak}** day streak).\n`;
+      analysis += `- **Repository Portfolio & Scope:** Manages **${user1.publicRepos}** public repositories with **${user1.stars ?? 0}** stars earned.\n`;
+      if (user1.languages && user1.languages.length > 0) {
+        analysis += `- **Tech Stack Versatility:** Demonstrates proficiency in **${user1.languages.join(', ')}** with an estimated average project complexity score of **${user1.avgComplexity ?? 75}%**.\n`;
       }
-      if (user1.streak > user2.streak) {
-        analysis += `- **Better Committer Consistency:** Maintains a peak streak of **${user1.streak}** consecutive active days, indicating more regular coding habits.\n`;
-      }
-      if (user1.followers > user2.followers) {
-        analysis += `- **Larger Social Footprint:** Commands a community of **${user1.followers}** followers versus **${user2.followers}**.\n`;
-      }
-      if (user1.publicRepos > user2.publicRepos) {
-        analysis += `- **Deeper Codebase Footprint:** Hosts **${user1.publicRepos}** public repositories demonstrating a broader portfolio selection.\n`;
-      }
+      analysis += `- **Community Reach:** Commands a community of **${user1.followers}** followers versus @${user2.username}'s **${user2.followers}**.\n`;
     } else if (score2 > score1) {
       analysis += `### Winner Profile: @${user2.username}\n\n`;
-      analysis += `@${user2.username} represents the stronger development profile overall. Here is why and how:\n\n`;
-      if (user2.contributions > user1.contributions) {
-        analysis += `- **Higher Developer Engagement:** Has achieved **${user2.contributions}** contributions in the last year compared to @${user1.username}'s **${user1.contributions}** contributions.\n`;
+      analysis += `@${user2.username} represents the stronger development profile overall based on code contributions, repository complexity, and active streaks. Here is the detailed breakdown:\n\n`;
+      analysis += `- **Overall Contributions & Activity:** Has recorded **${user2.contributions}** total contributions with a **${user2.streak}** day active streak (compared to @${user1.username}'s **${user1.contributions}** contributions and **${user1.streak}** day streak).\n`;
+      analysis += `- **Repository Portfolio & Scope:** Manages **${user2.publicRepos}** public repositories with **${user2.stars ?? 0}** stars earned.\n`;
+      if (user2.languages && user2.languages.length > 0) {
+        analysis += `- **Tech Stack Versatility:** Demonstrates proficiency in **${user2.languages.join(', ')}** with an estimated average project complexity score of **${user2.avgComplexity ?? 75}%**.\n`;
       }
-      if (user2.streak > user1.streak) {
-        analysis += `- **Better Committer Consistency:** Maintains a peak streak of **${user2.streak}** consecutive active days, indicating more regular coding habits.\n`;
-      }
-      if (user2.followers > user1.followers) {
-        analysis += `- **Larger Social Footprint:** Commands a community of **${user2.followers}** followers versus **${user1.followers}**.\n`;
-      }
-      if (user2.publicRepos > user1.publicRepos) {
-        analysis += `- **Deeper Codebase Footprint:** Hosts **${user2.publicRepos}** public repositories demonstrating a broader portfolio selection.\n`;
-      }
+      analysis += `- **Community Reach:** Commands a community of **${user2.followers}** followers versus @${user1.username}'s **${user1.followers}**.\n`;
     } else {
       analysis += `### Match Result: Technical Tie\n\n`;
       analysis += `Both @${user1.username} and @${user2.username} demonstrate equivalent engineering profile weights. `;

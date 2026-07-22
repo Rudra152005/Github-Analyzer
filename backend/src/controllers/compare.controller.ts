@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { User } from '../models/User';
 import { decrypt } from '../utils/encryption';
-import { fetchPublicProfile, fetchContributionCalendar, calcStreak } from '../services/github.service';
+import { fetchPublicProfile, fetchContributionCalendar, calcStreak, fetchGitHubRepos } from '../services/github.service';
 import { compareUsers } from '../services/gemini.service';
 import { AppError } from '../middleware/errorHandler';
 import { cacheGet, cacheSet } from '../config/redis';
@@ -13,7 +13,7 @@ export async function compareHandler(req: Request, res: Response): Promise<void>
     throw new AppError('Both user1 and user2 are required', 400);
   }
 
-  const cacheKey = `compare:${[username1, username2].sort().join(':')}`;
+  const cacheKey = `compare:v3:${[username1, username2].sort().join(':')}`;
   const cached = await cacheGet(cacheKey);
   if (cached) { res.json(cached); return; }
 
@@ -26,84 +26,81 @@ export async function compareHandler(req: Request, res: Response): Promise<void>
   if (!profile1) throw new AppError(`GitHub user "${username1}" not found`, 404);
   if (!profile2) throw new AppError(`GitHub user "${username2}" not found`, 404);
 
-  // 2. Fetch live contribution activities using logged-in user's token
-  const loggedInUser = await User.findById(req.session.userId);
-  const token = loggedInUser ? decrypt(loggedInUser.githubAccessToken) : '';
+  // 2. Fetch public repos for project complexity & tech stack comparison
+  const [repos1, repos2] = await Promise.all([
+    fetchGitHubRepos('', username1).catch(() => []),
+    fetchGitHubRepos('', username2).catch(() => []),
+  ]);
 
-  let activity1: { date: string; count: number }[] = [];
-  let activity2: { date: string; count: number }[] = [];
+  // Compute stars, forks, languages, and complexity for user 1
+  const stars1 = repos1.reduce((acc, r) => acc + (r.stargazers_count || 0), 0);
+  const forks1 = repos1.reduce((acc, r) => acc + (r.forks_count || 0), 0);
+  const langs1 = Array.from(new Set(repos1.map((r) => r.language).filter(Boolean))) as string[];
+  const avgComplexity1 = Math.round(
+    repos1.length
+      ? repos1.reduce((acc, r) => acc + Math.min(95, Math.max(50, 40 + (r.stargazers_count || 0) * 0.5 + (r.forks_count || 0))), 0) / repos1.length
+      : 70
+  );
 
-  if (token && token !== 'mock_github_token_for_seeding') {
-    try {
-      const [act1, act2] = await Promise.all([
-        fetchContributionCalendar(token, username1).catch(() => []),
-        fetchContributionCalendar(token, username2).catch(() => []),
-      ]);
-      activity1 = act1;
-      activity2 = act2;
-    } catch {
-      // ignore non-fatal token retrieval errors
-    }
-  }
+  // Compute stars, forks, languages, and complexity for user 2
+  const stars2 = repos2.reduce((acc, r) => acc + (r.stargazers_count || 0), 0);
+  const forks2 = repos2.reduce((acc, r) => acc + (r.forks_count || 0), 0);
+  const langs2 = Array.from(new Set(repos2.map((r) => r.language).filter(Boolean))) as string[];
+  const avgComplexity2 = Math.round(
+    repos2.length
+      ? repos2.reduce((acc, r) => acc + Math.min(95, Math.max(50, 40 + (r.stargazers_count || 0) * 0.5 + (r.forks_count || 0))), 0) / repos2.length
+      : 70
+  );
 
-  // 3. Compute active counts and streaks or use realistic fallbacks
-  const contributions1 = activity1.length > 0 
-    ? activity1.reduce((sum, d) => sum + d.count, 0)
-    : Math.max(15, Math.round(profile1.publicRepos * 18 + profile1.followers * 1.6));
-
-  const contributions2 = activity2.length > 0
-    ? activity2.reduce((sum, d) => sum + d.count, 0)
-    : Math.max(15, Math.round(profile2.publicRepos * 18 + profile2.followers * 1.6));
-
-  const streak1 = activity1.length > 0 
-    ? calcStreak(activity1)
-    : Math.max(0, Math.min(60, Math.round(profile1.followers * 0.12)));
-
-  const streak2 = activity2.length > 0
-    ? calcStreak(activity2)
-    : Math.max(0, Math.min(60, Math.round(profile2.followers * 0.12)));
-
-  // 4. Update the profile objects so they contain live stats
-  profile1.contributions = contributions1;
-  profile1.streak = streak1;
-  profile2.contributions = contributions2;
-  profile2.streak = streak2;
+  // 3. Extract accurate lifetime contributions & streak from profiles
+  const contributions1 = profile1.contributions || 0;
+  const contributions2 = profile2.contributions || 0;
+  const streak1 = profile1.streak || 0;
+  const streak2 = profile2.streak || 0;
 
   const stats1 = {
     repositories: profile1.publicRepos,
     followers: profile1.followers,
     contributions: contributions1,
     streak: streak1,
-    stars: Math.round(profile1.followers * 0.8),
+    stars: stars1,
+    forks: forks1,
+    languages: langs1,
+    avgComplexity: avgComplexity1,
   };
   const stats2 = {
     repositories: profile2.publicRepos,
     followers: profile2.followers,
     contributions: contributions2,
     streak: streak2,
-    stars: Math.round(profile2.followers * 0.8),
+    stars: stars2,
+    forks: forks2,
+    languages: langs2,
+    avgComplexity: avgComplexity2,
   };
 
   // Determine overall winner using a weighted engineering scorecard
   const score1 = 
     stats1.repositories * 0.15 + 
     stats1.followers * 0.10 + 
-    stats1.contributions * 0.45 + 
-    stats1.streak * 0.30;
+    stats1.contributions * 0.40 + 
+    stats1.streak * 0.20 +
+    stats1.avgComplexity * 0.15;
 
   const score2 = 
     stats2.repositories * 0.15 + 
     stats2.followers * 0.10 + 
-    stats2.contributions * 0.45 + 
-    stats2.streak * 0.30;
+    stats2.contributions * 0.40 + 
+    stats2.streak * 0.20 +
+    stats2.avgComplexity * 0.15;
 
   const winner: 'user1' | 'user2' | 'tie' =
     score1 > score2 ? 'user1' : score2 > score1 ? 'user2' : 'tie';
 
   // AI summary comparing their strengths
   const analysis = await compareUsers(
-    { username: username1, contributions: contributions1, streak: streak1, publicRepos: profile1.publicRepos, followers: profile1.followers },
-    { username: username2, contributions: contributions2, streak: streak2, publicRepos: profile2.publicRepos, followers: profile2.followers }
+    { username: username1, contributions: contributions1, streak: streak1, publicRepos: profile1.publicRepos, followers: profile1.followers, stars: stars1, forks: forks1, languages: langs1, avgComplexity: avgComplexity1 },
+    { username: username2, contributions: contributions2, streak: streak2, publicRepos: profile2.publicRepos, followers: profile2.followers, stars: stars2, forks: forks2, languages: langs2, avgComplexity: avgComplexity2 }
   );
 
   const result = { user1: profile1, user2: profile2, stats1, stats2, winner, analysis };

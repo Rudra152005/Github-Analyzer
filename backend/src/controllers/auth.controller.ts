@@ -50,15 +50,27 @@ export async function githubCallback(req: Request, res: Response): Promise<void>
 
   // Upsert user
   const encryptedToken = encrypt(accessToken);
-  const user = await User.findOneAndUpdate(
-    { githubId: profile.githubId },
-    {
+  let user = await User.findOne({
+    $or: [
+      { githubId: profile.githubId },
+      { username: new RegExp(`^${ghUser.login}$`, 'i') }
+    ]
+  });
+
+  if (user) {
+    user.set({
       ...profile,
       githubAccessToken: encryptedToken,
       lastSyncedAt: new Date(),
-    },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
-  );
+    });
+    await user.save();
+  } else {
+    user = await User.create({
+      ...profile,
+      githubAccessToken: encryptedToken,
+      lastSyncedAt: new Date(),
+    });
+  }
 
   // Set session
   req.session.userId = String(user._id);
@@ -95,17 +107,52 @@ export async function logout(req: Request, res: Response): Promise<void> {
   });
 }
 
-export async function devLogin(req: Request, res: Response): Promise<void> {
-  if (env.NODE_ENV === 'production') {
-    throw new AppError('Dev login only allowed in development mode', 403);
+export async function loginWithUsername(req: Request, res: Response): Promise<void> {
+  const { username } = req.body;
+  if (!username) {
+    throw new AppError('Username is required', 400);
   }
-  const user = await User.findOne({ username: 'alexjohnson' });
-  if (!user) {
-    throw new AppError('alexjohnson user not found. Please run seed script.', 404);
+
+  const cleanUsername = username.replace(/^@/, '').trim();
+
+  try {
+    let profile;
+    try {
+      profile = await fetchGitHubProfile('', cleanUsername);
+    } catch (err: any) {
+      if (err.response && err.response.status === 404) {
+        throw new AppError('GitHub user not found', 404);
+      }
+      throw err;
+    }
+
+    let user = await User.findOne({
+      $or: [
+        { githubId: profile.githubId },
+        { username: new RegExp(`^${cleanUsername}$`, 'i') }
+      ]
+    });
+
+    if (user) {
+      user.set({
+        ...profile,
+        lastSyncedAt: new Date(),
+      });
+      await user.save();
+    } else {
+      user = await User.create({
+        ...profile,
+        lastSyncedAt: new Date(),
+      });
+    }
+
+    req.session.userId = String(user._id);
+    req.session.githubUsername = user.username;
+    res.json({ message: 'Logged in successfully' });
+  } catch (err: any) {
+    if (err instanceof AppError) throw err;
+    throw new AppError('Failed to fetch user data: ' + err.message, 500);
   }
-  req.session.userId = String(user._id);
-  req.session.githubUsername = user.username;
-  res.redirect(`${env.FRONTEND_URL}/dashboard`);
 }
 
 export async function linkedinLogin(req: Request, res: Response): Promise<void> {
