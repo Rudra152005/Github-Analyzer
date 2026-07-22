@@ -71,8 +71,8 @@ const XIcon = ({ className }: { className?: string }) => (
 );
 
 const socialLinks = [
-  { icon: Github, label: 'GitHub', href: 'https://github.com', color: 'hover:text-white' },
-  { icon: XIcon, label: 'X (Twitter)', href: 'https://x.com', color: 'hover:text-gray-900 dark:hover:text-white' },
+  { icon: Github, label: 'GitHub', href: 'https://github.com/Rudra152005', color: 'hover:text-white' },
+  { icon: XIcon, label: 'X (Twitter)', href: 'https://x.com/tiwar95562', color: 'hover:text-gray-900 dark:hover:text-white' },
   { icon: Linkedin, label: 'LinkedIn', href: 'https://linkedin.com', color: 'hover:text-blue-400' },
   { icon: MessageCircle, label: 'Discord', href: '#', color: 'hover:text-indigo-400' },
   { icon: Mail, label: 'Email', href: 'mailto:hello@devpulse.dev', color: 'hover:text-accent-primary' },
@@ -460,7 +460,15 @@ export default function Hero() {
                 © {new Date().getFullYear()} DevPulse. All rights reserved.
               </p>
               <p className="text-xs text-text-muted dark:text-text-dark-muted flex items-center gap-1">
-                Made with <Heart className="w-3 h-3 text-accent-primary inline" /> for developers worldwide
+                Made with <Heart className="w-3 h-3 text-accent-primary inline" /> by{' '}
+                <a
+                  href="https://x.com/tiwar95562"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-text-primary dark:text-white hover:text-accent-primary transition-colors"
+                >
+                  Rudra Tiwari (@tiwar95562)
+                </a>
               </p>
               <div className="flex items-center gap-4">
                 <span className="flex items-center gap-1.5 text-xs text-text-muted dark:text-text-dark-muted">
