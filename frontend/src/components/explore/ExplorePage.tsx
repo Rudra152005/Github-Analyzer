@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Compass,
@@ -22,6 +22,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { Card, Button, Badge, Input } from '../ui';
+import { api } from '../../lib/api';
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -1241,7 +1242,8 @@ export default function ExplorePage() {
                       </Card>
                     </motion.div>
                   );
-                })}
+                })
+              )}
               </motion.div>
             )}
 
